@@ -3,6 +3,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 
 import { convertFile } from "./build.js";
@@ -19,8 +20,10 @@ Options:
       --config <file>  Path to myst.yml (default: nearest one, upwards).
       --format         Pretty-print the generated HTML.
       --watch          Rebuild whenever an input file changes.
-      --serve [port]   Serve the project over HTTP (default port 8000) and
-                       implies --watch with live reload.
+      --serve          Serve the project over HTTP and imply --watch with live
+                       reload.
+      --port <n>       Port for --serve (default 8000). \`--serve 8080\` and
+                       \`--serve=8080\` are accepted as shorthands.
       --root <dir>     Directory to serve (default: the myst.yml directory).
       --host <host>    Interface to bind to (default: 127.0.0.1).
       --no-open        Do not print/open the first deck's URL.
@@ -71,8 +74,36 @@ function serverRoot(options, files) {
     return config ? path.dirname(config) : process.cwd();
 }
 
+/**
+ * `node:util.parseArgs` has no notion of an *optional* option value: a string
+ * option always consumes the next token, which would turn
+ * `myst2ld --serve slides.md` into "serve on port 'slides.md'". `--serve` is
+ * therefore a boolean, and the two shorthands are rewritten to `--port` here.
+ *
+ * @param {string[]} argv
+ */
+export function normalizeArgv(argv) {
+    const out = [];
+    for (let i = 0; i < argv.length; i++) {
+        const arg = argv[i];
+        const inlinePort = /^--serve=(\d+)$/.exec(arg);
+        if (inlinePort) {
+            out.push("--serve", "--port", inlinePort[1]);
+            continue;
+        }
+        if (arg === "--serve" && /^\d+$/.test(argv[i + 1] ?? "")) {
+            out.push("--serve", "--port", argv[i + 1]);
+            i += 1;
+            continue;
+        }
+        out.push(arg);
+    }
+    return out;
+}
+
 async function main() {
     const { values, positionals } = parseArgs({
+        args: normalizeArgv(process.argv.slice(2)),
         allowPositionals: true,
         options: {
             "out": { type: "string", short: "o" },
@@ -80,11 +111,14 @@ async function main() {
             "config": { type: "string" },
             "format": { type: "boolean", default: false },
             "watch": { type: "boolean", default: false },
-            "serve": { type: "string" },
+            "serve": { type: "boolean", default: false },
+            "port": { type: "string" },
             "root": { type: "string" },
             "host": { type: "string" },
-            "open": { type: "boolean", default: true },
-            "live-reload": { type: "boolean", default: true },
+            // `parseArgs` has no `--no-<flag>` negation, so the negative forms
+            // are declared as options of their own.
+            "no-open": { type: "boolean", default: false },
+            "no-live-reload": { type: "boolean", default: false },
             "help": { type: "boolean", short: "h", default: false },
         },
     });
@@ -100,22 +134,25 @@ async function main() {
 
     const results = await build(positionals, values);
 
-    const serving = values.serve !== undefined;
+    const serving = values.serve;
     const watching = values.watch || serving;
 
     let server;
     if (serving) {
         const root = serverRoot(values, positionals);
-        // `--serve` without a value yields an empty string.
-        const port = values.serve ? Number.parseInt(values.serve, 10) : 8000;
+        const port = values.port ? Number.parseInt(values.port, 10) : 8000;
+        if (Number.isNaN(port)) {
+            console.error(`invalid --port: ${values.port}`);
+            process.exit(1);
+        }
         server = await serve({
             root,
             port,
             host: values.host,
-            liveReload: values["live-reload"],
+            liveReload: !values["no-live-reload"],
         });
         console.log(`\nserving ${root}\n  ${server.url}`);
-        if (values.open && results.length > 0) {
+        if (!values["no-open"] && results.length > 0) {
             const rel = path
                 .relative(root, results[0].outPath)
                 .split(path.sep)
@@ -172,7 +209,13 @@ function debounce(fn, ms) {
     };
 }
 
-main().catch((error) => {
-    console.error(error?.stack ?? String(error));
-    process.exit(1);
-});
+/* Only run when invoked as a program - the module is also imported by tests. */
+if (
+    process.argv[1] &&
+    import.meta.url === pathToFileURL(process.argv[1]).href
+) {
+    main().catch((error) => {
+        console.error(error?.stack ?? String(error));
+        process.exit(1);
+    });
+}

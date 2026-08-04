@@ -30,7 +30,8 @@ myst2ld slides/folien.de.md              # -> slides/folien.de.html
 myst2ld --out-dir build slides/*.md
 myst2ld --watch slides/folien.de.md
 myst2ld --serve slides/folien.de.md      # build + serve + watch + live reload
-myst2ld --serve 8080 --no-live-reload slides/*.md
+myst2ld --serve --port 8080 slides/*.md
+myst2ld --serve --no-live-reload slides/*.md
 ```
 
 Everything else is configured in `myst.yml` (see below) and in the document's
@@ -46,7 +47,8 @@ generated HTML references `../LectureDoc2/src/…` and `../katex/…`.
 
 | Flag | Meaning |
 | --- | --- |
-| `--serve [port]` | serve on `port` (default 8000); implies `--watch` |
+| `--serve` | serve and watch with live reload |
+| `--port <n>` | port (default 8000); `--serve 8080` and `--serve=8080` are shorthands |
 | `--root <dir>` | serve a different directory |
 | `--host <host>` | bind address (default `127.0.0.1`) |
 | `--no-live-reload` | do not inject the reload script |
