@@ -37,7 +37,9 @@ async function build(files, options) {
             formatHtml: options.format,
         });
         const ms = Date.now() - started;
-        console.log(`${file} -> ${path.relative(process.cwd(), result.outPath)} (${ms} ms)`);
+        console.log(
+            `${file} -> ${path.relative(process.cwd(), result.outPath)} (${ms} ms)`,
+        );
         for (const warning of result.warnings) {
             console.warn(`  math: ${warning.message} in "${warning.tex}"`);
         }
@@ -53,12 +55,12 @@ async function main() {
     const { values, positionals } = parseArgs({
         allowPositionals: true,
         options: {
-            out: { type: "string", short: "o" },
+            "out": { type: "string", short: "o" },
             "out-dir": { type: "string" },
-            config: { type: "string" },
-            format: { type: "boolean", default: false },
-            watch: { type: "boolean", default: false },
-            help: { type: "boolean", short: "h", default: false },
+            "config": { type: "string" },
+            "format": { type: "boolean", default: false },
+            "watch": { type: "boolean", default: false },
+            "help": { type: "boolean", short: "h", default: false },
         },
     });
 
@@ -79,7 +81,11 @@ async function main() {
             build(positionals, values).catch((e) => console.error(e.message));
         }, 100);
         for (const file of positionals) {
-            fs.watch(path.dirname(path.resolve(file)), { recursive: true }, rebuild);
+            fs.watch(
+                path.dirname(path.resolve(file)),
+                { recursive: true },
+                rebuild,
+            );
         }
         await new Promise(() => {});
     }

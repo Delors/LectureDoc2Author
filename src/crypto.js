@@ -48,7 +48,9 @@ export async function encryptAESGCM(
     iterations = LD_PBKDF2_ITERATION_COUNT,
 ) {
     const data = encoder.encode(plaintext);
-    const baseHash = new Uint8Array(await crypto.subtle.digest("SHA-512", data));
+    const baseHash = new Uint8Array(
+        await crypto.subtle.digest("SHA-512", data),
+    );
     const salt = baseHash.slice(0, 32);
     const iv = baseHash.slice(32, 44);
     const key = await deriveKey(password, salt, iterations);

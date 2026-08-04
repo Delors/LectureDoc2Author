@@ -7,7 +7,10 @@ import { renderMathEagerly } from "../src/render/math.js";
 import { runTransforms } from "../src/transforms/index.js";
 
 /** Parses + transforms + renders a snippet the way `convertFile` does. */
-function render(markdown, { lang = "de", frontmatter = {}, substitutions } = {}) {
+function render(
+    markdown,
+    { lang = "de", frontmatter = {}, substitutions } = {},
+) {
     const options = createParseOptions({});
     const tree = parse(markdown, options);
     renderMathEagerly(tree);
@@ -46,7 +49,9 @@ test("level-1 headings become slides", () => {
 });
 
 test("topic-attrs configures the enclosing slide", () => {
-    const html = render("# Eins\n\n```{topic-attrs}\n:class: center-child-elements\n```\n\ntext");
+    const html = render(
+        "# Eins\n\n```{topic-attrs}\n:class: center-child-elements\n```\n\ntext",
+    );
     assert.match(html, /<ld-topic class="center-child-elements" id="eins">/);
 });
 
@@ -73,13 +78,17 @@ test("decks mark every card but the first as incremental", () => {
 });
 
 test("grids and cells produce ld-grid / ld-cell", () => {
-    const html = render("::::{grid}\n:::{cell}\n:align: center\n\nx\n:::\n::::");
+    const html = render(
+        "::::{grid}\n:::{cell}\n:align: center\n\nx\n:::\n::::",
+    );
     assert.match(html, /<ld-grid class="default-layout">/);
     assert.match(html, /<ld-cell style="align-self:center;">/);
 });
 
 test("supplemental supports embed-in-document-flow", () => {
-    const html = render(":::{supplemental}\n:embed-in-document-flow:\n\nx\n:::");
+    const html = render(
+        ":::{supplemental}\n:embed-in-document-flow:\n\nx\n:::",
+    );
     assert.match(html, /<ld-supplemental embed-in-document-flow="">/);
 });
 
@@ -103,7 +112,10 @@ test("substitutions are replaced", () => {
 
 test("definition lists become field lists", () => {
     const html = render("Folien\n\n:   inhalt");
-    assert.match(html, /<dl class="field-list"><dt>Folien<span class="colon">:<\/span><\/dt>/);
+    assert.match(
+        html,
+        /<dl class="field-list"><dt>Folien<span class="colon">:<\/span><\/dt>/,
+    );
 });
 
 test("svg images are embedded via <object>", () => {

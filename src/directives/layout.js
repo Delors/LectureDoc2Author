@@ -24,7 +24,10 @@ const topic = {
                 type: "ldTopic",
                 class: makeClasses(data.options?.class),
                 identifier:
-                    data.options?.name ?? (titleNodes.length ? makeId(toText(titleNodes)) : undefined),
+                    data.options?.name ??
+                    (titleNodes.length
+                        ? makeId(toText(titleNodes))
+                        : undefined),
                 titleNodes,
                 children: data.body ?? [],
             },
@@ -47,8 +50,8 @@ const topicAttrs = {
     alias: ["slide-attrs"],
     doc: "Applies classes/ids to the slide the directive appears in.",
     options: {
-        class: classOption,
-        name: nameOption,
+        "class": classOption,
+        "name": nameOption,
         "no-title": {
             type: Boolean,
             doc: "Suppress rendering of the slide's heading.",
@@ -77,7 +80,9 @@ const deck = {
     body: { type: "myst", required: true },
     run(data) {
         if (/\bdeck\b/.test(data.arg ?? "")) {
-            throw new Error('"deck" is superfluous; it is automatically added.');
+            throw new Error(
+                '"deck" is superfluous; it is automatically added.',
+            );
         }
         return [
             {
@@ -99,15 +104,17 @@ const card = {
     arg: { type: String, doc: "Additional CSS classes." },
     options: {
         "not-incremental": { type: Boolean },
-        theme: { type: String },
-        class: classOption,
+        "theme": { type: String },
+        "class": classOption,
     },
     body: { type: "myst", required: true },
     run(data) {
         const arg = data.arg ?? "";
         if (/\bcard\b/.test(arg)) throw new Error('"card" is superfluous.');
         if (/\bincremental\b/.test(arg)) {
-            throw new Error('"incremental" is superfluous; it is added automatically.');
+            throw new Error(
+                '"incremental" is superfluous; it is added automatically.',
+            );
         }
         return [
             {
@@ -200,7 +207,10 @@ const scrollable = {
     doc: "A scrollable container (`<ld-scrollable>`).",
     arg: { type: String, doc: "Additional CSS classes." },
     options: {
-        height: { type: String, doc: "Explicit height, e.g. `300px` or `-100px`." },
+        height: {
+            type: String,
+            doc: "Explicit height, e.g. `300px` or `-100px`.",
+        },
         class: classOption,
     },
     body: { type: "myst", required: true },
@@ -227,13 +237,15 @@ const supplemental = {
     arg: { type: String, doc: "Additional CSS classes." },
     options: {
         "embed-in-document-flow": { type: Boolean },
-        class: classOption,
-        name: nameOption,
+        "class": classOption,
+        "name": nameOption,
     },
     body: { type: "myst", required: true },
     run(data) {
         if (/\bsupplemental\b/.test(data.arg ?? "")) {
-            throw new Error('"supplemental" is superfluous; it is added automatically.');
+            throw new Error(
+                '"supplemental" is superfluous; it is added automatically.',
+            );
         }
         return [
             {
@@ -290,7 +302,9 @@ const classDirective = {
     run(data) {
         const classes = makeClasses(data.arg);
         if (data.body && data.body.length > 0) {
-            return [{ type: "ldClassWrapper", class: classes, children: data.body }];
+            return [
+                { type: "ldClassWrapper", class: classes, children: data.body },
+            ];
         }
         return [{ type: "ldPendingClass", class: classes }];
     },

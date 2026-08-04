@@ -23,10 +23,17 @@ class Globals {
     }
 }
 
-/** Runs `fn` with `source` as the current document. Returns `fn`'s result. */
-export function withContext(source, fn) {
+/**
+ * Runs `fn` with `source` as the current document. Returns `fn`'s result.
+ *
+ * @param {string} source absolute path of the document being parsed
+ * @param {Function} fn
+ * @param {object} options `root` - the project root, used to make the paths of
+ *   the `source` directive reproducible independently of the current directory
+ */
+export function withContext(source, fn, { root } = {}) {
     const previous = context;
-    context = { source, globals: new Globals() };
+    context = { source, root: root ?? process.cwd(), globals: new Globals() };
     try {
         return { result: fn(), globals: context.globals };
     } finally {
@@ -41,6 +48,11 @@ export function currentSource() {
         );
     }
     return context.source;
+}
+
+export function currentRoot() {
+    if (!context) throw new Error("no parsing context");
+    return context.root;
 }
 
 export function currentGlobals() {

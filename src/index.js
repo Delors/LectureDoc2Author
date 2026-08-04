@@ -1,7 +1,11 @@
 /* Public API of MystToLectureDoc2. */
 
 export { convertFile } from "./build.js";
-export { directives, STANDARD_ADMONITIONS, TITLED_ADMONITIONS } from "./directives/index.js";
+export {
+    directives,
+    STANDARD_ADMONITIONS,
+    TITLED_ADMONITIONS,
+} from "./directives/index.js";
 export { buildRoles, builtinRoles, classRole, roles } from "./roles/index.js";
 export { createRenderer } from "./render/index.js";
 export { buildDocument, LD_VERSION } from "./render/document.js";

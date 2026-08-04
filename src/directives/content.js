@@ -5,10 +5,17 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import { currentSource, currentGlobals } from "../context.js";
+import { currentGlobals, currentRoot, currentSource } from "../context.js";
 import { generatePassword, makeClasses, makeId, toText } from "../util.js";
 
 const classOption = { type: String, doc: "Additional CSS classes." };
+
+/** Strips a single pair of surrounding quotes, as docutils' options do. */
+function unquote(value) {
+    if (typeof value !== "string") return value;
+    const match = /^(["'])([\s\S]*)\1$/.exec(value.trim());
+    return match ? match[2] : value;
+}
 const nameOption = { type: String, doc: "Explicit target name / HTML id." };
 
 /* ------------------------------------------------------ exercise/solution */
@@ -22,8 +29,8 @@ const exercise = {
             type: "myst",
             doc: "A title with inline markup, replaces the plain title.",
         },
-        class: classOption,
-        name: nameOption,
+        "class": classOption,
+        "name": nameOption,
     },
     body: { type: "myst", required: true },
     run(data) {
@@ -131,13 +138,19 @@ const includeSvg = {
         try {
             svg = fs.readFileSync(svgPath, "utf-8");
         } catch (error) {
-            throw new Error(`could not read SVG file ${svgPath}: ${error.message}`);
+            throw new Error(
+                `could not read SVG file ${svgPath}: ${error.message}`,
+            );
         }
 
         if (data.options?.global) {
-            const forbidden = ["width", "height", "alt", "name", "class"].filter(
-                (o) => data.options?.[o] !== undefined,
-            );
+            const forbidden = [
+                "width",
+                "height",
+                "alt",
+                "name",
+                "class",
+            ].filter((o) => data.options?.[o] !== undefined);
             if (forbidden.length > 0) {
                 throw new Error(
                     `the :global: option cannot be combined with ${forbidden
@@ -149,8 +162,10 @@ const includeSvg = {
             return [];
         }
 
-        if (!data.options?.width) throw new Error("the :width: option is required.");
-        if (!data.options?.height) throw new Error("the :height: option is required.");
+        if (!data.options?.width)
+            throw new Error("the :width: option is required.");
+        if (!data.options?.height)
+            throw new Error("the :height: option is required.");
 
         return [
             {
@@ -174,11 +189,11 @@ const globalInformation = {
     arg: { type: String, required: true, doc: "The title." },
     options: {
         "formatted-title": { type: "myst" },
-        symbol: { type: String },
-        type: { type: String, doc: "`cheat-sheet` (default) or `slide`." },
-        embed: { type: Boolean },
-        class: classOption,
-        name: nameOption,
+        "symbol": { type: String },
+        "type": { type: String, doc: "`cheat-sheet` (default) or `slide`." },
+        "embed": { type: Boolean },
+        "class": classOption,
+        "name": nameOption,
     },
     body: { type: "myst", required: true },
     run(data) {
@@ -216,17 +231,22 @@ const sourceDirective = {
     body: { type: String },
     run(data) {
         const source = currentSource();
-        const relativePath = data.arg
-            ? path.join(path.dirname(source), data.arg)
+        const absolute = data.arg
+            ? path.resolve(path.dirname(source), data.arg)
             : source;
         const mode = data.options?.path ?? "relative";
         let resolved;
         switch (mode) {
             case "relative":
-                resolved = relativePath;
+                // Relative to the project root so that the generated link does
+                // not depend on the directory the build was started from.
+                resolved = path
+                    .relative(currentRoot(), absolute)
+                    .split(path.sep)
+                    .join("/");
                 break;
             case "absolute":
-                resolved = path.resolve(relativePath);
+                resolved = absolute;
                 break;
             default:
                 throw new Error(`unknown path type: ${mode}`);
@@ -235,8 +255,8 @@ const sourceDirective = {
             {
                 type: "ldSource",
                 resolvedPath: resolved,
-                prefix: data.options?.prefix,
-                suffix: data.options?.suffix,
+                prefix: unquote(data.options?.prefix),
+                suffix: unquote(data.options?.suffix),
             },
         ];
     },
@@ -259,7 +279,8 @@ const include = {
         let text = fs.readFileSync(target, "utf-8");
         const startAfter = data.options?.["start-after"];
         const endBefore = data.options?.["end-before"];
-        if (startAfter) text = text.slice(text.indexOf(startAfter) + startAfter.length);
+        if (startAfter)
+            text = text.slice(text.indexOf(startAfter) + startAfter.length);
         if (endBefore) text = text.slice(0, text.indexOf(endBefore));
         const parsed = ctx.parseMyst(text);
         return parsed.children ?? [];

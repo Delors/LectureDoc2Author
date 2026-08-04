@@ -63,7 +63,8 @@ export function findMystConfig(start) {
 }
 
 export function loadMystConfig(configPath) {
-    if (!configPath) return { config: {}, root: process.cwd(), path: undefined };
+    if (!configPath)
+        return { config: {}, root: process.cwd(), path: undefined };
     const config = yaml.load(fs.readFileSync(configPath, "utf-8")) ?? {};
     return { config, root: path.dirname(configPath), path: configPath };
 }

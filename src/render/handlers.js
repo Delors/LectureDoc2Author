@@ -67,7 +67,12 @@ export function buildHandlers(ctx) {
                 ? { type: "paragraph", children: [child] }
                 : child,
         );
-        return h(node, "li", { class: cls(node.class) }, all(h, { ...node, children }));
+        return h(
+            node,
+            "li",
+            { class: cls(node.class) },
+            all(h, { ...node, children }),
+        );
     };
 
     const definitionList = (h, node) =>
@@ -83,12 +88,18 @@ export function buildHandlers(ctx) {
         h(node, "dd", { class: cls(node.class) }, all(h, node));
 
     const paragraph = (h, node) =>
-        h(node, "p", { class: cls(node.class), id: node.identifier }, all(h, node));
+        h(
+            node,
+            "p",
+            { class: cls(node.class), id: node.identifier },
+            all(h, node),
+        );
 
     const blockquote = (h, node) =>
         h(node, "blockquote", { class: cls(node.class) }, all(h, node));
 
-    const thematicBreak = (h, node) => h(node, "hr", { class: cls(node.class) });
+    const thematicBreak = (h, node) =>
+        h(node, "hr", { class: cls(node.class) });
 
     /** docutils: `<pre class="code python literal-block"><code>…</code></pre>` */
     const code = (h, node) => {
@@ -109,10 +120,15 @@ export function buildHandlers(ctx) {
             lines.forEach((line, i) => {
                 children.push(
                     h(node, "span", { class: "ln" }, [
-                        u("text", String(start + i).padStart(digits, " ") + " "),
+                        u(
+                            "text",
+                            String(start + i).padStart(digits, " ") + " ",
+                        ),
                     ]),
                 );
-                children.push(u("text", line + (i < lines.length - 1 ? "\n" : "")));
+                children.push(
+                    u("text", line + (i < lines.length - 1 ? "\n" : "")),
+                );
             });
         } else {
             children.push(u("text", node.value ?? ""));
@@ -148,13 +164,13 @@ export function buildHandlers(ctx) {
         // does it.
         if (uri.endsWith(".svg") && !(node.class ?? "").includes("icon")) {
             return h(node, "object", {
-                class: classes,
-                data: uri,
-                type: "image/svg+xml",
-                role: "img",
+                "class": classes,
+                "data": uri,
+                "type": "image/svg+xml",
+                "role": "img",
                 "aria-label": node.alt || undefined,
-                width: node.width || undefined,
-                height: node.height || undefined,
+                "width": node.width || undefined,
+                "height": node.height || undefined,
             });
         }
         return h(node, "img", {
@@ -193,7 +209,9 @@ export function buildHandlers(ctx) {
             }
             if (node.subtitle) {
                 children.push(
-                    h(node, "p", { class: "subtitle" }, [u("text", node.subtitle)]),
+                    h(node, "p", { class: "subtitle" }, [
+                        u("text", node.subtitle),
+                    ]),
                 );
             }
             if (node.docinfo && Object.keys(node.docinfo).length > 0) {
@@ -249,7 +267,10 @@ export function buildHandlers(ctx) {
             );
             rows.push(
                 h(node, "dd", { class: klass }, [
-                    raw(ctx.renderInlineMarkdown?.(String(value)) ?? escapeHtml(value)),
+                    raw(
+                        ctx.renderInlineMarkdown?.(String(value)) ??
+                            escapeHtml(value),
+                    ),
                 ]),
             );
         }
@@ -264,7 +285,12 @@ export function buildHandlers(ctx) {
         const children = [];
         if (node.generic) {
             children.push(
-                h(node, "p", { class: "admonition-title" }, allOf(h, node.titleNodes ?? [])),
+                h(
+                    node,
+                    "p",
+                    { class: "admonition-title" },
+                    allOf(h, node.titleNodes ?? []),
+                ),
             );
         } else {
             properties["data-theme"] = node.kind;
@@ -279,7 +305,7 @@ export function buildHandlers(ctx) {
                         node,
                         "p",
                         {
-                            class: "admonition-title",
+                            "class": "admonition-title",
                             "data-theme": `${node.kind}-header`,
                         },
                         [h(node, "span", {}, titleChildren)],
@@ -291,7 +317,7 @@ export function buildHandlers(ctx) {
                         node,
                         "p",
                         {
-                            class: "admonition-title",
+                            "class": "admonition-title",
                             "data-theme": `${node.kind}-header`,
                         },
                         titleChildren,
@@ -316,7 +342,7 @@ export function buildHandlers(ctx) {
         h(
             node,
             "ld-scrollable",
-            { class: cls(node.class), "data-height": node.height },
+            { "class": cls(node.class), "data-height": node.height },
             all(h, node),
         );
 
@@ -324,7 +350,7 @@ export function buildHandlers(ctx) {
         h(
             node,
             "ld-deck",
-            { class: cls(node.class), "data-theme": node.theme },
+            { "class": cls(node.class), "data-theme": node.theme },
             all(h, node),
         );
 
@@ -332,7 +358,7 @@ export function buildHandlers(ctx) {
         h(
             node,
             "ld-card",
-            { class: cls(node.class), "data-theme": node.theme },
+            { "class": cls(node.class), "data-theme": node.theme },
             all(h, node),
         );
 
@@ -344,8 +370,8 @@ export function buildHandlers(ctx) {
             node,
             "ld-cell",
             {
-                class: cls(node.class),
-                style: `align-self:${node.align ?? "auto"};`,
+                "class": cls(node.class),
+                "style": `align-self:${node.align ?? "auto"};`,
                 "data-theme": node.theme,
             },
             all(h, node),
@@ -355,7 +381,7 @@ export function buildHandlers(ctx) {
         h(
             node,
             "div",
-            { class: cls("compound", node.class), "data-theme": node.theme },
+            { "class": cls("compound", node.class), "data-theme": node.theme },
             all(h, node),
         );
 
@@ -373,7 +399,8 @@ export function buildHandlers(ctx) {
     const ldSpan = (h, node) =>
         h(node, "span", { class: cls(node.class) }, all(h, node));
 
-    const ldKbd = (h, node) => h(node, "kbd", {}, [u("text", node.value ?? "")]);
+    const ldKbd = (h, node) =>
+        h(node, "kbd", {}, [u("text", node.value ?? "")]);
 
     const ldSource = (h, node) => {
         let target = node.resolvedPath;
@@ -389,9 +416,9 @@ export function buildHandlers(ctx) {
             node,
             "div",
             {
-                class: cls(node.class),
-                id: node.identifier,
-                style: `width: ${node.width}; height: ${node.height};`,
+                "class": cls(node.class),
+                "id": node.identifier,
+                "style": `width: ${node.width}; height: ${node.height};`,
                 "aria-label": node.alt,
             },
             [raw(node.svg)],
@@ -436,8 +463,8 @@ export function buildHandlers(ctx) {
             node,
             "div",
             {
-                class: cls("ld-exercise", node.class),
-                id: `ld-exercise-${node.exerciseId}`,
+                "class": cls("ld-exercise", node.class),
+                "id": `ld-exercise-${node.exerciseId}`,
                 "data-exercise-id": String(node.exerciseId),
                 "data-exercise-title": node.exerciseTitle,
             },
@@ -463,7 +490,7 @@ export function buildHandlers(ctx) {
             node,
             "div",
             {
-                class: cls("ld-exercise-solution", node.class),
+                "class": cls("ld-exercise-solution", node.class),
                 "data-encrypted": node.encrypted ? "true" : undefined,
             },
             all(h, node),

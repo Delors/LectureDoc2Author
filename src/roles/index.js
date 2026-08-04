@@ -34,7 +34,11 @@ const incremental = {
     body: { type: "myst", required: true },
     run(data) {
         return [
-            { type: "ldSpan", class: ["incremental"], children: data.body ?? [] },
+            {
+                type: "ldSpan",
+                class: ["incremental"],
+                children: data.body ?? [],
+            },
         ];
     },
 };
@@ -62,7 +66,10 @@ export const builtinRoles = [rawHtml, incremental];
 /** Builds the full role list from the `ld.roles` configuration. */
 export function buildRoles(roleConfig = {}) {
     const custom = Object.entries(roleConfig).map(([name, value]) =>
-        classRole(name, typeof value === "string" ? value : (value?.class ?? name)),
+        classRole(
+            name,
+            typeof value === "string" ? value : (value?.class ?? name),
+        ),
     );
     return [...builtinRoles, ...custom];
 }

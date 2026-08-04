@@ -39,7 +39,9 @@ export function applyOverrides(
 
     const ourDirectiveNames = new Set(directives.flatMap(namesOf));
     for (let i = defaultDirectives.length - 1; i >= 0; i--) {
-        if (namesOf(defaultDirectives[i]).some((n) => ourDirectiveNames.has(n))) {
+        if (
+            namesOf(defaultDirectives[i]).some((n) => ourDirectiveNames.has(n))
+        ) {
             defaultDirectives.splice(i, 1);
         }
     }

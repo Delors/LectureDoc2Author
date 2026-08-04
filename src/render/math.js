@@ -76,7 +76,7 @@ export function renderMathEagerly(tree, options = {}) {
     visit(tree, "math", (node, index, parent) => {
         if (!parent || index === null) return;
         const id = node.identifier ?? node.label;
-        const attrs = ["class=\"math\""];
+        const attrs = ['class="math"'];
         if (id) attrs.push(`id="${id}"`);
         parent.children[index] = {
             type: "html",

@@ -56,7 +56,8 @@ function frontmatterMeta(frontmatter, ld) {
         // generated HTML.
         if (key === "master-password") continue;
         const value = ld?.[key] ?? ld?.[toCamel(key)];
-        if (value !== undefined) meta.push({ name: key, content: String(value) });
+        if (value !== undefined)
+            meta.push({ name: key, content: String(value) });
     }
     return meta;
 }
@@ -79,7 +80,8 @@ export async function convertFile(source, options = {}) {
 
     const configPath =
         options.config ?? findMystConfig(path.dirname(sourcePath));
-    const { config: projectConfig, root: projectRoot } = loadMystConfig(configPath);
+    const { config: projectConfig, root: projectRoot } =
+        loadMystConfig(configPath);
     const resolved = resolveConfig({ projectConfig, frontmatter });
     const ld = resolved.ld;
 
@@ -93,8 +95,10 @@ export async function convertFile(source, options = {}) {
 
     const parseOptions = createParseOptions(ld);
 
-    const { result: tree, globals } = withContext(sourcePath, () =>
-        parse(body, parseOptions),
+    const { result: tree, globals } = withContext(
+        sourcePath,
+        () => parse(body, parseOptions),
+        { root: projectRoot },
     );
 
     /* ------------------------------------------------------------- math */
@@ -122,8 +126,10 @@ export async function convertFile(source, options = {}) {
     /* --------------------------------------------------------- renderer */
 
     const renderInlineMarkdown = (value) => {
-        const parsed = withContext(sourcePath, () =>
-            parse(String(value), parseOptions),
+        const parsed = withContext(
+            sourcePath,
+            () => parse(String(value), parseOptions),
+            { root: projectRoot },
         ).result;
         // Unwrap a single paragraph so that `Version: 1.3` does not become
         // `<p>1.3</p>` inside the docinfo `<dd>`.
@@ -213,7 +219,9 @@ export async function convertFile(source, options = {}) {
         );
         fs.writeFileSync(
             `${passwordsPath}.md`,
-            passwords.map(({ title, pwd }) => `- ${title}: \t${pwd}\n`).join(""),
+            passwords
+                .map(({ title, pwd }) => `- ${title}: \t${pwd}\n`)
+                .join(""),
             "utf-8",
         );
     }

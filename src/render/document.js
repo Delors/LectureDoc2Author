@@ -41,7 +41,9 @@ export function buildDocument(options) {
 
     const head = [];
     head.push('<meta charset="utf-8">');
-    head.push('<meta name="viewport" content="width=device-width, initial-scale=1.0" />');
+    head.push(
+        '<meta name="viewport" content="width=device-width, initial-scale=1.0" />',
+    );
     for (const entry of meta) {
         const extra = entry.lang
             ? ` lang="${escapeHtml(entry.lang, { attribute: true })}" xml:lang="${escapeHtml(
@@ -55,7 +57,9 @@ export function buildDocument(options) {
     head.push(`<title>${escapeHtml(title)}</title>`);
 
     if (katexCss) {
-        head.push(`<link rel="stylesheet" href="${escapeHtml(katexCss, { attribute: true })}" />`);
+        head.push(
+            `<link rel="stylesheet" href="${escapeHtml(katexCss, { attribute: true })}" />`,
+        );
     }
     head.push(`<script src="${ldPath}/ld.js" type="module"></script>`);
     head.push(`<link rel="stylesheet" href="${ldPath}/ld.css" />`);
@@ -67,7 +71,9 @@ export function buildDocument(options) {
         );
     }
     for (const module of modules) {
-        head.push(`<script src="${escapeHtml(module, { attribute: true })}" type="module"></script>`);
+        head.push(
+            `<script src="${escapeHtml(module, { attribute: true })}" type="module"></script>`,
+        );
     }
 
     const globals = [];
@@ -85,7 +91,9 @@ export function buildDocument(options) {
 
     const bodyParts = [];
     if (globals.length > 0) {
-        bodyParts.push(`<ld-svg-globals>${globals.join("\n")}</ld-svg-globals>`);
+        bodyParts.push(
+            `<ld-svg-globals>${globals.join("\n")}</ld-svg-globals>`,
+        );
     }
     bodyParts.push("<template>");
     bodyParts.push(body);

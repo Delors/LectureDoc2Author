@@ -113,6 +113,8 @@ const genericAdmonition = {
 
 export const admonitionDirectives = [
     genericAdmonition,
-    ...STANDARD_ADMONITIONS.map((k) => admonitionDirective(k, { titled: false })),
+    ...STANDARD_ADMONITIONS.map((k) =>
+        admonitionDirective(k, { titled: false }),
+    ),
     ...TITLED_ADMONITIONS.map((k) => admonitionDirective(k, { titled: true })),
 ];

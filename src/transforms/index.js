@@ -62,7 +62,10 @@ export function applySubstitutions(tree, substitutions = {}) {
             const [full, name] = match;
             if (!(name in substitutions)) continue;
             if (match.index > last) {
-                replacement.push({ type: "text", value: value.slice(last, match.index) });
+                replacement.push({
+                    type: "text",
+                    value: value.slice(last, match.index),
+                });
             }
             const sub = substitutions[name];
             if (Array.isArray(sub)) replacement.push(...structuredClone(sub));
@@ -95,7 +98,9 @@ export function applyPendingClasses(tree) {
             if (child.type !== "ldPendingClass") continue;
             const target = node.children[i + 1] ?? node;
             target.class = makeClasses([
-                ...(Array.isArray(target.class) ? target.class : makeClasses(target.class)),
+                ...(Array.isArray(target.class)
+                    ? target.class
+                    : makeClasses(target.class)),
                 ...child.class,
             ]);
             node.children.splice(i, 1);
@@ -105,7 +110,9 @@ export function applyPendingClasses(tree) {
     visit(tree, "ldClassWrapper", (node) => {
         for (const child of node.children ?? []) {
             child.class = makeClasses([
-                ...(Array.isArray(child.class) ? child.class : makeClasses(child.class)),
+                ...(Array.isArray(child.class)
+                    ? child.class
+                    : makeClasses(child.class)),
                 ...node.class,
             ]);
         }
@@ -133,7 +140,8 @@ export function buildSlides(tree, frontmatter = {}) {
         type: "ldTopic",
         titleSlide: true,
         class: makeClasses(frontmatter.class),
-        identifier: frontmatter.id ?? makeId(frontmatter.title ?? "title-slide"),
+        identifier:
+            frontmatter.id ?? makeId(frontmatter.title ?? "title-slide"),
         titleNodes: frontmatter.titleNodes,
         title: frontmatter.title,
         subtitle: frontmatter.subtitle,
@@ -176,7 +184,9 @@ export function buildSlides(tree, frontmatter = {}) {
     }
 
     // Slides marked `hide-slide` are dropped completely (as in rst2ld).
-    const visible = slides.filter((s) => !(s.class ?? []).includes("hide-slide"));
+    const visible = slides.filter(
+        (s) => !(s.class ?? []).includes("hide-slide"),
+    );
 
     tree.children = visible;
     return tree;
@@ -238,7 +248,10 @@ export function markIncrementalCards(tree) {
         for (const child of deck.children ?? []) {
             if (child.type !== "ldCard") continue;
             if (index > 0 && !child.notIncremental) {
-                child.class = makeClasses([...(child.class ?? []), "incremental"]);
+                child.class = makeClasses([
+                    ...(child.class ?? []),
+                    "incremental",
+                ]);
             }
             index += 1;
         }
