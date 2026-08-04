@@ -6,6 +6,8 @@ import path from "node:path";
 import { parseArgs } from "node:util";
 
 import { convertFile } from "./build.js";
+import { findMystConfig } from "./config.js";
+import { serve } from "./serve.js";
 
 const USAGE = `Usage: myst2ld [options] <file.md> [<file.md> ...]
 
@@ -17,10 +19,20 @@ Options:
       --config <file>  Path to myst.yml (default: nearest one, upwards).
       --format         Pretty-print the generated HTML.
       --watch          Rebuild whenever an input file changes.
+      --serve [port]   Serve the project over HTTP (default port 8000) and
+                       implies --watch with live reload.
+      --root <dir>     Directory to serve (default: the myst.yml directory).
+      --host <host>    Interface to bind to (default: 127.0.0.1).
+      --no-open        Do not print/open the first deck's URL.
+      --no-live-reload Serve without injecting the live reload script.
   -h, --help           Show this message.
+
+LectureDoc2 loads its JavaScript as an ES module and uses crypto.subtle, so the
+slides have to be served over HTTP - opening them via file:// does not work.
 `;
 
 async function build(files, options) {
+    const results = [];
     for (const file of files) {
         const out = options.out
             ? path.resolve(options.out)
@@ -43,12 +55,20 @@ async function build(files, options) {
         for (const warning of result.warnings) {
             console.warn(`  math: ${warning.message} in "${warning.tex}"`);
         }
-        if (result.passwords.length > 0) {
-            for (const { title, pwd } of result.passwords) {
-                console.log(`  exercise ${title}: ${pwd}`);
-            }
+        for (const { title, pwd } of result.passwords) {
+            console.log(`  exercise ${title}: ${pwd}`);
         }
+        results.push(result);
     }
+    return results;
+}
+
+/** The directory that has to be served: the project root, not the deck's. */
+function serverRoot(options, files) {
+    if (options.root) return path.resolve(options.root);
+    const config =
+        options.config ?? findMystConfig(path.dirname(path.resolve(files[0])));
+    return config ? path.dirname(config) : process.cwd();
 }
 
 async function main() {
@@ -60,6 +80,11 @@ async function main() {
             "config": { type: "string" },
             "format": { type: "boolean", default: false },
             "watch": { type: "boolean", default: false },
+            "serve": { type: "string" },
+            "root": { type: "string" },
+            "host": { type: "string" },
+            "open": { type: "boolean", default: true },
+            "live-reload": { type: "boolean", default: true },
             "help": { type: "boolean", short: "h", default: false },
         },
     });
@@ -73,18 +98,66 @@ async function main() {
         process.exit(1);
     }
 
-    await build(positionals, values);
+    const results = await build(positionals, values);
 
-    if (values.watch) {
-        console.log("watching for changes ... (ctrl-c to stop)");
+    const serving = values.serve !== undefined;
+    const watching = values.watch || serving;
+
+    let server;
+    if (serving) {
+        const root = serverRoot(values, positionals);
+        // `--serve` without a value yields an empty string.
+        const port = values.serve ? Number.parseInt(values.serve, 10) : 8000;
+        server = await serve({
+            root,
+            port,
+            host: values.host,
+            liveReload: values["live-reload"],
+        });
+        console.log(`\nserving ${root}\n  ${server.url}`);
+        if (values.open && results.length > 0) {
+            const rel = path
+                .relative(root, results[0].outPath)
+                .split(path.sep)
+                .join("/");
+            console.log(`  ${server.url}/${rel}`);
+        }
+        console.log("");
+    }
+
+    if (watching) {
+        if (!serving) console.log("watching for changes ... (ctrl-c to stop)");
         const rebuild = debounce(() => {
-            build(positionals, values).catch((e) => console.error(e.message));
+            build(positionals, values)
+                .then(() => server?.reload())
+                .catch((error) => console.error(error.message));
         }, 100);
+
+        const directories = new Set(
+            positionals.map((file) => path.dirname(path.resolve(file))),
+        );
+        for (const dir of directories) {
+            try {
+                fs.watch(dir, { recursive: true }, (_event, filename) => {
+                    // Ignore our own output to avoid a rebuild loop.
+                    if (filename && /\.html$/.test(filename)) return;
+                    rebuild();
+                });
+            } catch (error) {
+                console.warn(
+                    `cannot watch ${dir} (${error.code}); polling instead`,
+                );
+            }
+        }
+        // Polling fallback: `fs.watch` is unreliable on network shares and on
+        // some FUSE mounts, and the inputs themselves are what matters most.
         for (const file of positionals) {
-            fs.watch(
-                path.dirname(path.resolve(file)),
-                { recursive: true },
-                rebuild,
+            fs.watchFile(
+                path.resolve(file),
+                { interval: 500 },
+                (now, before) => {
+                    if (now.mtimeMs !== before.mtimeMs) rebuild();
+                },
             );
         }
         await new Promise(() => {});

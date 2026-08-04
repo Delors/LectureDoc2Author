@@ -29,10 +29,35 @@ npm link            # optional: makes `myst2ld` available globally
 myst2ld slides/folien.de.md              # -> slides/folien.de.html
 myst2ld --out-dir build slides/*.md
 myst2ld --watch slides/folien.de.md
+myst2ld --serve slides/folien.de.md      # build + serve + watch + live reload
+myst2ld --serve 8080 --no-live-reload slides/*.md
 ```
 
 Everything else is configured in `myst.yml` (see below) and in the document's
 frontmatter.
+
+### The development server
+
+LectureDoc2 loads `ld.js` as an ES module and uses `crypto.subtle`, so the
+slides have to be served over HTTP — `file://` does not work. `--serve` starts a
+dependency-free `node:http` server (so no Python or extra package is needed),
+serving **the project root** — the directory containing `myst.yml` — because the
+generated HTML references `../LectureDoc2/src/…` and `../katex/…`.
+
+| Flag | Meaning |
+| --- | --- |
+| `--serve [port]` | serve on `port` (default 8000); implies `--watch` |
+| `--root <dir>` | serve a different directory |
+| `--host <host>` | bind address (default `127.0.0.1`) |
+| `--no-live-reload` | do not inject the reload script |
+| `--no-open` | do not print the deck URLs |
+
+If the port is taken, the next free one (up to +20) is used. Responses carry
+`Cache-Control: no-store`. The server can also be used stand-alone:
+
+```sh
+node node_modules/myst-to-lecturedoc2/src/serve.js <root> <port>
+```
 
 ## Project configuration
 
