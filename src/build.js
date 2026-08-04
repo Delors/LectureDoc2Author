@@ -67,6 +67,18 @@ function toCamel(key) {
 }
 
 /**
+ * The generated file keeps the source name and only *appends* `.html`
+ * (`folien.de.md` -> `folien.de.md.html`), mirroring what
+ * reStructuredTextToLectureDoc2 does (`folien.de.rst.html`). That makes it
+ * obvious at a glance which files are derived and which are hand-written.
+ *
+ * @param {string} source path of the source document
+ */
+export function outputNameFor(source) {
+    return `${source}.html`;
+}
+
+/**
  * Converts one MyST document.
  *
  * @param {string} source absolute or cwd-relative path of the `.md` file
@@ -85,9 +97,7 @@ export async function convertFile(source, options = {}) {
     const resolved = resolveConfig({ projectConfig, frontmatter });
     const ld = resolved.ld;
 
-    const outPath = path.resolve(
-        options.out ?? sourcePath.replace(/\.md$/, ".html"),
-    );
+    const outPath = path.resolve(options.out ?? outputNameFor(sourcePath));
     const outDir = path.dirname(outPath);
     fs.mkdirSync(outDir, { recursive: true });
 

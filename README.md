@@ -26,7 +26,7 @@ npm link            # optional: makes `myst2ld` available globally
 ## Use
 
 ```sh
-myst2ld slides/folien.de.md              # -> slides/folien.de.html
+myst2ld slides/folien.de.md              # -> slides/folien.de.md.html
 myst2ld --out-dir build slides/*.md
 myst2ld --watch slides/folien.de.md
 myst2ld --serve slides/folien.de.md      # build + serve + watch + live reload
@@ -36,6 +36,14 @@ myst2ld --serve --no-live-reload slides/*.md
 
 Everything else is configured in `myst.yml` (see below) and in the document's
 frontmatter.
+
+### Output files
+
+`.html` is **appended** to the full source name rather than replacing the
+extension, so `folien.de.md` becomes `folien.de.md.html` — the same convention
+reStructuredTextToLectureDoc2 uses (`folien.de.rst.html`). Derived files are
+therefore recognizable at a glance and a single `*.md.html` line in
+`.gitignore` covers all of them. Use `--out` to choose a different name.
 
 ### The development server
 

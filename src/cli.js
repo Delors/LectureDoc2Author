@@ -6,7 +6,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 
-import { convertFile } from "./build.js";
+import { convertFile, outputNameFor } from "./build.js";
 import { findMystConfig } from "./config.js";
 import { serve } from "./serve.js";
 
@@ -42,7 +42,7 @@ async function build(files, options) {
             : options["out-dir"]
               ? path.join(
                     path.resolve(options["out-dir"]),
-                    path.basename(file).replace(/\.md$/, ".html"),
+                    outputNameFor(path.basename(file)),
                 )
               : undefined;
         const started = Date.now();
