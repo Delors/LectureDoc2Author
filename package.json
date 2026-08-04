@@ -1,0 +1,42 @@
+{
+    "name": "myst-to-lecturedoc2",
+    "version": "0.1.0",
+    "description": "Converts MyST Markdown documents into LectureDoc2 compatible HTML. Provides the MyST plugins (directives, roles, transforms) and the renderer that replace reStructuredTextToLectureDoc2.",
+    "author": "Michael Eichberg",
+    "license": "BSD-3-Clause",
+    "type": "module",
+    "main": "./src/index.js",
+    "exports": {
+        ".": "./src/index.js",
+        "./plugin": "./myst-plugin.mjs"
+    },
+    "bin": {
+        "myst2ld": "./src/cli.js"
+    },
+    "files": [
+        "src",
+        "myst-plugin.mjs",
+        "README.md",
+        "LICENSE.txt"
+    ],
+    "scripts": {
+        "test": "node --test test/*.test.js",
+        "fmt": "prettier --write .",
+        "fmt:check": "prettier --check ."
+    },
+    "dependencies": {
+        "js-yaml": "^4.1.0",
+        "katex": "^0.16.11",
+        "mdast-util-to-hast": "^12.3.0",
+        "myst-parser": "^1.7.3",
+        "myst-to-html": "^1.5.15",
+        "unist-builder": "^4.0.0",
+        "unist-util-visit": "^5.0.0"
+    },
+    "devDependencies": {
+        "prettier": "^3.6.2"
+    },
+    "engines": {
+        "node": ">=20"
+    }
+}

@@ -1,0 +1,278 @@
+/* Content related directives: exercise/solution, presenter-note, popover,
+ * include-svg, global-information, source and include.
+ */
+
+import fs from "node:fs";
+import path from "node:path";
+
+import { currentSource, currentGlobals } from "../context.js";
+import { generatePassword, makeClasses, makeId, toText } from "../util.js";
+
+const classOption = { type: String, doc: "Additional CSS classes." };
+const nameOption = { type: String, doc: "Explicit target name / HTML id." };
+
+/* ------------------------------------------------------ exercise/solution */
+
+const exercise = {
+    name: "exercise",
+    doc: "An exercise; may contain exactly one (encrypted) `solution`.",
+    arg: { type: String, doc: "The (plain text) title of the exercise." },
+    options: {
+        "formatted-title": {
+            type: "myst",
+            doc: "A title with inline markup, replaces the plain title.",
+        },
+        class: classOption,
+        name: nameOption,
+    },
+    body: { type: "myst", required: true },
+    run(data) {
+        return [
+            {
+                type: "ldExercise",
+                title: data.arg,
+                formattedTitle: data.options?.["formatted-title"],
+                class: makeClasses(data.options?.class),
+                identifier: data.options?.name,
+                children: data.body ?? [],
+            },
+        ];
+    },
+};
+
+const solution = {
+    name: "solution",
+    doc: "The (encrypted) solution of the enclosing exercise.",
+    options: {
+        pwd: { type: String, doc: "The password; generated when omitted." },
+        class: classOption,
+    },
+    body: { type: "myst", required: true },
+    run(data) {
+        const pwd = data.options?.pwd;
+        if (pwd !== undefined && pwd.length < 3) {
+            throw new Error('solution password too short: ":pwd: <password>"');
+        }
+        return [
+            {
+                type: "ldSolution",
+                pwd: pwd ?? generatePassword(),
+                class: makeClasses(data.options?.class),
+                children: data.body ?? [],
+            },
+        ];
+    },
+};
+
+/* ---------------------------------------------------------presenter note */
+
+const presenterNote = {
+    name: "presenter-note",
+    doc: "An encrypted note that is only shown in the presenter view.",
+    arg: { type: String, doc: "Additional CSS classes." },
+    options: { class: classOption, name: nameOption },
+    body: { type: "myst", required: true },
+    run(data) {
+        return [
+            {
+                type: "ldPresenterNote",
+                class: [
+                    ...makeClasses(data.arg),
+                    ...makeClasses(data.options?.class),
+                ],
+                identifier: data.options?.name,
+                children: data.body ?? [],
+            },
+        ];
+    },
+};
+
+/* ---------------------------------------------------------------- popover */
+
+const popover = {
+    name: "popover",
+    doc: "A button that opens a `<dialog popover>` with the given content.",
+    arg: { type: "myst", required: true, doc: "The button's label." },
+    options: { class: classOption },
+    body: { type: "myst", required: true },
+    run(data) {
+        const titleNodes = data.arg ?? [];
+        return [
+            {
+                type: "ldPopover",
+                popoverId: makeId(toText(titleNodes)),
+                titleNodes,
+                buttonClasses: makeClasses(data.options?.class ?? "popover"),
+                children: data.body ?? [],
+            },
+        ];
+    },
+};
+
+/* ------------------------------------------------------------ include-svg */
+
+const includeSvg = {
+    name: "include-svg",
+    doc: "Embeds the content of an SVG file directly into the HTML output.",
+    arg: { type: String, required: true, doc: "Path to the SVG file." },
+    options: {
+        width: { type: String },
+        height: { type: String },
+        class: classOption,
+        name: nameOption,
+        alt: { type: String },
+        global: { type: Boolean, doc: "Collect into `<ld-svg-globals>`." },
+    },
+    body: { type: String },
+    run(data) {
+        const source = currentSource();
+        const svgPath = path.resolve(path.dirname(source), data.arg);
+        let svg;
+        try {
+            svg = fs.readFileSync(svgPath, "utf-8");
+        } catch (error) {
+            throw new Error(`could not read SVG file ${svgPath}: ${error.message}`);
+        }
+
+        if (data.options?.global) {
+            const forbidden = ["width", "height", "alt", "name", "class"].filter(
+                (o) => data.options?.[o] !== undefined,
+            );
+            if (forbidden.length > 0) {
+                throw new Error(
+                    `the :global: option cannot be combined with ${forbidden
+                        .map((o) => `:${o}:`)
+                        .join(", ")}.`,
+                );
+            }
+            currentGlobals().addSvg(svgPath, svg);
+            return [];
+        }
+
+        if (!data.options?.width) throw new Error("the :width: option is required.");
+        if (!data.options?.height) throw new Error("the :height: option is required.");
+
+        return [
+            {
+                type: "ldIncludeSvg",
+                svg,
+                width: data.options.width,
+                height: data.options.height,
+                class: makeClasses(data.options?.class),
+                identifier: data.options?.name,
+                alt: data.options?.alt,
+            },
+        ];
+    },
+};
+
+/* ------------------------------------------------------ global information */
+
+const globalInformation = {
+    name: "global-information",
+    doc: "Information that is relevant for the whole slide set.",
+    arg: { type: String, required: true, doc: "The title." },
+    options: {
+        "formatted-title": { type: "myst" },
+        symbol: { type: String },
+        type: { type: String, doc: "`cheat-sheet` (default) or `slide`." },
+        embed: { type: Boolean },
+        class: classOption,
+        name: nameOption,
+    },
+    body: { type: "myst", required: true },
+    run(data) {
+        const infoType = data.options?.type ?? "cheat-sheet";
+        if (!["cheat-sheet", "slide"].includes(infoType)) {
+            throw new Error('type must be "cheat-sheet" or "slide"');
+        }
+        return [
+            {
+                type: "ldGlobalInformation",
+                title: data.arg,
+                titleNodes: data.options?.["formatted-title"],
+                symbol: data.options?.symbol,
+                infoType,
+                embed: !!data.options?.embed,
+                class: makeClasses(data.options?.class),
+                identifier: data.options?.name,
+                children: data.body ?? [],
+            },
+        ];
+    },
+};
+
+/* ----------------------------------------------------------------- source */
+
+const sourceDirective = {
+    name: "source",
+    doc: "Renders a link to (by default) the current source document.",
+    arg: { type: String, doc: "A file name relative to the current document." },
+    options: {
+        prefix: { type: String },
+        suffix: { type: String },
+        path: { type: String, doc: "`relative` (default) or `absolute`." },
+    },
+    body: { type: String },
+    run(data) {
+        const source = currentSource();
+        const relativePath = data.arg
+            ? path.join(path.dirname(source), data.arg)
+            : source;
+        const mode = data.options?.path ?? "relative";
+        let resolved;
+        switch (mode) {
+            case "relative":
+                resolved = relativePath;
+                break;
+            case "absolute":
+                resolved = path.resolve(relativePath);
+                break;
+            default:
+                throw new Error(`unknown path type: ${mode}`);
+        }
+        return [
+            {
+                type: "ldSource",
+                resolvedPath: resolved,
+                prefix: data.options?.prefix,
+                suffix: data.options?.suffix,
+            },
+        ];
+    },
+};
+
+/* ---------------------------------------------------------------- include */
+
+const include = {
+    name: "include",
+    doc: "Includes and parses another MyST file relative to the current one.",
+    arg: { type: String, required: true, doc: "Path to the file." },
+    options: {
+        "start-after": { type: String },
+        "end-before": { type: String },
+    },
+    body: { type: String },
+    run(data, vfile, ctx) {
+        const source = currentSource();
+        const target = path.resolve(path.dirname(source), data.arg);
+        let text = fs.readFileSync(target, "utf-8");
+        const startAfter = data.options?.["start-after"];
+        const endBefore = data.options?.["end-before"];
+        if (startAfter) text = text.slice(text.indexOf(startAfter) + startAfter.length);
+        if (endBefore) text = text.slice(0, text.indexOf(endBefore));
+        const parsed = ctx.parseMyst(text);
+        return parsed.children ?? [];
+    },
+};
+
+export const contentDirectives = [
+    exercise,
+    solution,
+    presenterNote,
+    popover,
+    includeSvg,
+    globalInformation,
+    sourceDirective,
+    include,
+];
