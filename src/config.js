@@ -22,8 +22,12 @@ export const DEFAULT_LD_CONFIG = {
     roles: {},
     /** KaTeX configuration. */
     katex: {
-        /** Directory (relative to the project root) the assets are copied to. */
-        dir: "katex",
+        /**
+         * Directory (relative to the project root) the assets are copied to.
+         * The default puts them next to LectureDoc2's other third-party
+         * assets (`ext/mathjax`, `ext/fonts`, ...).
+         */
+        dir: "LectureDoc2/ext/katex",
         /** Explicit stylesheet href; disables vendoring when set. */
         css: undefined,
         /** TeX macros. */

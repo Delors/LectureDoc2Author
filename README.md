@@ -51,7 +51,7 @@ LectureDoc2 loads `ld.js` as an ES module and uses `crypto.subtle`, so the
 slides have to be served over HTTP — `file://` does not work. `--serve` starts a
 dependency-free `node:http` server (so no Python or extra package is needed),
 serving **the project root** — the directory containing `myst.yml` — because the
-generated HTML references `../LectureDoc2/src/…` and `../katex/…`.
+generated HTML references `../LectureDoc2/…`.
 
 | Flag | Meaning |
 | --- | --- |
@@ -83,7 +83,7 @@ project:
             animated-logo: ../LectureDoc2/src/css/themes/DHBW/animated-logo.js
             timeline: ../LectureDoc2/components/ld-timeline.js
         katex:
-            dir: katex # assets are copied here (project root)
+            dir: LectureDoc2/ext/katex # assets are copied here (project root)
             macros:
                 "\\RR": "\\mathbb{R}"
         roles: # custom inline roles
