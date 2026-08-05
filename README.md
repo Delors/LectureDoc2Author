@@ -88,7 +88,8 @@ project:
                 "\\RR": "\\mathbb{R}"
         roles: # custom inline roles
             eng: english # {eng}`text` -> <span class="english">
-        passwords: passwords.json # where exercise passwords are written
+        secrets: _defs/ld-secrets.yml # git-ignored; holds master-password
+        passwords: true # write <output>.passwords.json[.md] (default)
 ```
 
 ## Document frontmatter
@@ -109,9 +110,29 @@ substitutions:
 ld:
     id: my-lecture # <meta name="id"> – LectureDoc2 uses it for storage
     first-slide: last-viewed
-    master-password: "…" # required for presenter notes / exercise passwords
 ---
 ```
+
+## Secrets and password files
+
+The `master-password` (required for encrypted solutions and presenter notes)
+must never sit in a committed file. It is read from the YAML file named by
+`ld.secrets` — `_defs/ld-secrets.yml` by default — which is merged into `ld` and
+silently ignored when absent:
+
+```yaml
+# _defs/ld-secrets.yml   (git-ignored)
+master-password: …
+```
+
+Whenever a deck contains exercises, two files are written next to the slides:
+
+- `<output>.passwords.json` — the master password plus every exercise password,
+- `<output>.passwords.json.md` — the exercise passwords only; this is the file
+  handed to students so they can unlock the sample solutions.
+
+Both contain secrets and belong in `.gitignore` (`*.passwords.json*`). Set
+`ld.passwords: false` to disable, or give a path to write a single fixed file.
 
 ## Slides
 
