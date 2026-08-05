@@ -43,6 +43,33 @@ const incremental = {
     },
 };
 
+/**
+ * Builds a role that renders its content as inline code of a given language,
+ * the MyST counterpart of docutils'
+ *
+ *     .. role:: java(code)
+ *        :language: java
+ *
+ * `{java}`BigInteger`` becomes `<code class="java">…</code>` with Pygments
+ * style token spans inside.
+ */
+export function codeRole(name, language) {
+    return {
+        name,
+        doc: `Inline ${language} code.`,
+        body: { type: String, required: true },
+        run(data) {
+            return [
+                {
+                    type: "ldInlineCode",
+                    lang: language,
+                    value: data.body ?? "",
+                },
+            ];
+        },
+    };
+}
+
 /** Builds a role that wraps its content in a `<span>` with fixed classes. */
 export function classRole(name, classes) {
     return {
@@ -63,15 +90,29 @@ export function classRole(name, classes) {
 
 export const builtinRoles = [rawHtml, incremental];
 
-/** Builds the full role list from the `ld.roles` configuration. */
-export function buildRoles(roleConfig = {}) {
+/**
+ * Builds the full role list from the configuration.
+ *
+ *     ld:
+ *       roles:                 # {eng}`text` -> <span class="english">text</span>
+ *         eng: english
+ *       code-roles:            # {java}`x`   -> <code class="java">x</code>
+ *         java: java
+ */
+export function buildRoles(roleConfig = {}, codeRoleConfig = {}) {
     const custom = Object.entries(roleConfig).map(([name, value]) =>
         classRole(
             name,
             typeof value === "string" ? value : (value?.class ?? name),
         ),
     );
-    return [...builtinRoles, ...custom];
+    const codeRoles = Object.entries(codeRoleConfig).map(([name, value]) =>
+        codeRole(
+            name,
+            typeof value === "string" ? value : (value?.language ?? name),
+        ),
+    );
+    return [...builtinRoles, ...custom, ...codeRoles];
 }
 
 export const roles = builtinRoles;

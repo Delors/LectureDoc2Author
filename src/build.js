@@ -128,6 +128,10 @@ export async function convertFile(source, options = {}) {
             id: ld.id,
         },
         substitutions: resolved.substitutions,
+        parseMyst: (value) =>
+            withContext(sourcePath, () => parse(String(value), parseOptions), {
+                root: projectRoot,
+            }).result,
     });
 
     const passwords = numberExercises(tree);

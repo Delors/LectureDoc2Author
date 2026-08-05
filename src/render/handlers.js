@@ -14,6 +14,7 @@ import { all } from "mdast-util-to-hast";
 import { u } from "unist-builder";
 
 import { classAttr, escapeHtml, mergeClasses } from "../util.js";
+import { highlight } from "./highlight.js";
 import { label } from "../i18n.js";
 
 /** Turns a `class` property (array or string) into a hast class attribute. */
@@ -84,8 +85,44 @@ export function buildHandlers(ctx) {
             h(node, "span", { class: "colon" }, [u("text", ":")]),
         ]);
 
-    const definitionDescription = (h, node) =>
-        h(node, "dd", { class: cls(node.class) }, all(h, node));
+    /** Inline node types; anything else starts a block. */
+    const INLINE_TYPES = new Set([
+        "text",
+        "emphasis",
+        "strong",
+        "inlineCode",
+        "link",
+        "html",
+        "inlineMath",
+        "break",
+        "image",
+        "delete",
+        "underline",
+        "smallcaps",
+        "subscript",
+        "superscript",
+        "abbreviation",
+        "keyboard",
+        "footnoteReference",
+        "ldSpan",
+        "ldInlineCode",
+        "ldSource",
+        "ldKbd",
+    ]);
+
+    /** docutils wraps the body of a field/definition in a paragraph. */
+    const definitionDescription = (h, node) => {
+        const children = node.children ?? [];
+        const inline =
+            children.length > 0 &&
+            children.every((c) => INLINE_TYPES.has(c.type));
+        return h(
+            node,
+            "dd",
+            { class: cls(node.class) },
+            inline ? [h(node, "p", {}, all(h, node))] : all(h, node),
+        );
+    };
 
     const paragraph = (h, node) =>
         h(
@@ -101,38 +138,50 @@ export function buildHandlers(ctx) {
     const thematicBreak = (h, node) =>
         h(node, "hr", { class: cls(node.class) });
 
-    /** docutils: `<pre class="code python literal-block"><code>…</code></pre>` */
+    /**
+     * Literal blocks, in the shape docutils' HTML5 writer produces:
+     *
+     *     <pre class="code pascal copy-to-clipboard literal-block"
+     *       ><small class="ln"> 1 </small><code data-lineno=" 1 ">…</code
+     *       ><small class="ln"> 2 </small><code data-lineno=" 2 ">…</code></pre>
+     *
+     * The `<small class="ln">` elements have to be *direct children* of the
+     * `<pre>`: LectureDoc2's copy-to-clipboard strips them with
+     * `:scope > small.ln` before copying (see `ld-copy-to-clipboard.js`).
+     */
     const code = (h, node) => {
         const language = node.lang ?? node.language;
         const properties = {
-            class: cls("code", language, "literal-block", node.class),
+            class: cls("code", language, node.class, "literal-block"),
             id: node.identifier,
         };
+        const value = node.value ?? "";
         const children = [];
         const showLineNumbers = node.showLineNumbers || node.linenos;
         if (showLineNumbers) {
+            const lines = value.split("\n");
             const start = node.startingLineNumber ?? node.lineno_start ?? 1;
-            const lines = (node.value ?? "").split("\n");
             const digits = Math.max(
                 node.lineNumberDigits ?? 1,
                 String(start + lines.length - 1).length,
             );
             lines.forEach((line, i) => {
+                const number = ` ${String(start + i).padStart(digits, " ")} `;
                 children.push(
-                    h(node, "span", { class: "ln" }, [
-                        u(
-                            "text",
-                            String(start + i).padStart(digits, " ") + " ",
+                    h(node, "small", { class: "ln" }, [u("text", number)]),
+                );
+                children.push(
+                    h(node, "code", { "data-lineno": number }, [
+                        raw(
+                            highlight(line, language) +
+                                (i < lines.length - 1 ? "\n" : ""),
                         ),
                     ]),
                 );
-                children.push(
-                    u("text", line + (i < lines.length - 1 ? "\n" : "")),
-                );
             });
-        } else {
-            children.push(u("text", node.value ?? ""));
+            return h(node, "pre", properties, children);
         }
+        children.push(raw(highlight(value, language)));
         return h(node, "pre", properties, [h(node, "code", {}, children)]);
     };
 
@@ -196,8 +245,148 @@ export function buildHandlers(ctx) {
     };
 
     /* ------------------------------------------------------------------ */
-    /* LectureDoc2 nodes                                                  */
+    /* Footnotes                                                          */
     /* ------------------------------------------------------------------ */
+
+    /*
+     * Rendered the way docutils does - and, importantly, *in place*: mystmd's
+     * default handling collects all footnotes into one `<section>` at the end
+     * of the document, which on a slide deck would move them off their slide.
+     */
+
+    const brackets = (h, node, label) => [
+        h(node, "span", { class: "fn-bracket" }, [u("text", "[")]),
+        u("text", String(label)),
+        h(node, "span", { class: "fn-bracket" }, [u("text", "]")]),
+    ];
+
+    const footnoteReference = (h, node) => {
+        const label = node.label ?? node.identifier;
+        return h(
+            node,
+            "a",
+            {
+                class: "brackets",
+                href: `#footnote-${label}`,
+                id: `footnote-reference-${label}`,
+                role: "doc-noteref",
+            },
+            brackets(h, node, label),
+        );
+    };
+
+    /* docutils renders the label as `[<backlink>]`, with no extra backrefs. */
+    const footnoteDefinition = (h, node) => {
+        const label = node.label ?? node.identifier;
+        const footnote = h(
+            node,
+            "aside",
+            {
+                class: "footnote brackets",
+                id: `footnote-${label}`,
+                role: "doc-footnote",
+            },
+            [
+                h(node, "span", { class: "label" }, [
+                    h(node, "span", { class: "fn-bracket" }, [u("text", "[")]),
+                    h(
+                        node,
+                        "a",
+                        {
+                            role: "doc-backlink",
+                            href: `#footnote-reference-${label}`,
+                        },
+                        [u("text", String(label))],
+                    ),
+                    h(node, "span", { class: "fn-bracket" }, [u("text", "]")]),
+                ]),
+                ...all(h, node),
+            ],
+        );
+        return h(node, "aside", { class: "footnote-list brackets" }, [
+            footnote,
+        ]);
+    };
+
+    /** `{java}`x`` -> `<code class="java">…</code>` (docutils' code role). */
+    const ldInlineCode = (h, node) =>
+        h(node, "code", { class: cls(node.lang, node.class) }, [
+            raw(highlight(node.value ?? "", node.lang)),
+        ]);
+
+    const ldContainer = (h, node) =>
+        h(
+            node,
+            "div",
+            { class: cls(node.class), id: node.identifier },
+            all(h, node),
+        );
+
+    const ldRubric = (h, node) =>
+        h(
+            node,
+            "p",
+            { class: cls(node.class, "rubric"), id: node.identifier },
+            all(h, node),
+        );
+
+    /** docutils tables: `<table><thead>…</thead><tbody>…</tbody></table>`. */
+    const ldTable = (h, node) => {
+        const rows = node.children ?? [];
+        const headerRows = rows.filter((r) =>
+            (r.children ?? []).every((c) => c.header),
+        );
+        const bodyRows = rows.filter((r) => !headerRows.includes(r));
+
+        const renderRow = (row) =>
+            h(
+                row,
+                "tr",
+                {},
+                (row.children ?? []).map((cell) =>
+                    // docutils wraps every cell body in a paragraph.
+                    h(cell, cell.header ? "th" : "td", {}, all(h, cell)),
+                ),
+            );
+
+        const children = [];
+        if (node.caption?.length) {
+            children.push(h(node, "caption", {}, allOf(h, node.caption)));
+        }
+        if (node.widths) {
+            const total = node.widths.reduce((a, b) => a + b, 0);
+            children.push(
+                h(
+                    node,
+                    "colgroup",
+                    {},
+                    node.widths.map((w) =>
+                        h(node, "col", {
+                            style: `width: ${Math.round((w / total) * 100)}%;`,
+                        }),
+                    ),
+                ),
+            );
+        }
+        if (headerRows.length > 0) {
+            children.push(h(node, "thead", {}, headerRows.map(renderRow)));
+        }
+        if (bodyRows.length > 0) {
+            children.push(h(node, "tbody", {}, bodyRows.map(renderRow)));
+        }
+        return h(
+            node,
+            "table",
+            {
+                class: cls(
+                    node.class,
+                    node.align ? `align-${node.align}` : undefined,
+                ),
+                id: node.identifier,
+            },
+            children,
+        );
+    };
 
     const ldTopic = (h, node) => {
         const children = [];
@@ -474,7 +663,7 @@ export function buildHandlers(ctx) {
                           h(
                               node,
                               "p",
-                              { class: "rubric ld-exercise-title" },
+                              { class: "ld-exercise-title rubric" },
                               node.formattedTitle?.length
                                   ? allOf(h, node.formattedTitle)
                                   : [u("text", node.title)],
@@ -505,6 +694,12 @@ export function buildHandlers(ctx) {
     return {
         // docutils compatibility
         list,
+        footnoteReference,
+        footnoteDefinition,
+        ldContainer,
+        ldRubric,
+        ldTable,
+        ldInlineCode,
         listItem,
         definitionList,
         definitionTerm,

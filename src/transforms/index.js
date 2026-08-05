@@ -24,8 +24,11 @@ export function liftDirectives(tree) {
             if (child.type === "mystDirective" || child.type === "mystRole") {
                 lifted.push(...(child.children ?? []));
             } else if (child.type === "mystDirectiveError") {
+                const at = child.position?.start?.line
+                    ? ` (line ${child.position.start.line})`
+                    : "";
                 throw new Error(
-                    `directive "${child.name}": ${child.message ?? "invalid"}`,
+                    `directive "${child.name}"${at}: ${child.message ?? "invalid"}`,
                 );
             } else {
                 lifted.push(child);
@@ -43,12 +46,42 @@ export function liftDirectives(tree) {
 
 /**
  * Replaces `{{ name }}` in text nodes with the corresponding entry of
- * `substitutions`. Values may be plain strings or mdast node arrays; strings
- * are inserted as raw HTML so that `docutils.defs`-style link substitutions
- * keep working.
+ * `substitutions`.
+ *
+ * A value may be
+ *   - a string          -> inserted as raw HTML (docutils.defs style),
+ *   - an mdast array    -> inserted as is,
+ *   - `{ myst: "…" }`   -> parsed as MyST *in the current document*, which is
+ *     what makes directive-valued substitutions such as
+ *
+ *         html-source:
+ *           myst: |
+ *             ```{source}
+ *             :suffix: .html
+ *             ```
+ *
+ *     work the way `.. |html-source| source::` does in reST.
  */
-export function applySubstitutions(tree, substitutions = {}) {
+export function applySubstitutions(tree, substitutions = {}, parseMyst) {
     if (Object.keys(substitutions).length === 0) return tree;
+
+    /** Parses a `{myst: …}` value into inline-usable nodes (cached). */
+    const parsed = new Map();
+    const mystNodes = (name, value) => {
+        if (parsed.has(name)) return parsed.get(name);
+        if (!parseMyst) {
+            throw new Error(
+                `substitution "${name}" uses \`myst:\` but no parser was given`,
+            );
+        }
+        const tree = liftDirectives(parseMyst(value));
+        const children =
+            tree.children?.length === 1 && tree.children[0].type === "paragraph"
+                ? tree.children[0].children
+                : tree.children;
+        parsed.set(name, children ?? []);
+        return children ?? [];
+    };
     const pattern = /\{\{\s*([A-Za-z0-9_.-]+)\s*\}\}/g;
     visit(tree, "text", (node, index, parent) => {
         if (!parent || index === null) return;
@@ -68,8 +101,13 @@ export function applySubstitutions(tree, substitutions = {}) {
                 });
             }
             const sub = substitutions[name];
-            if (Array.isArray(sub)) replacement.push(...structuredClone(sub));
-            else replacement.push({ type: "html", value: String(sub) });
+            if (Array.isArray(sub)) {
+                replacement.push(...structuredClone(sub));
+            } else if (sub && typeof sub === "object" && "myst" in sub) {
+                replacement.push(...structuredClone(mystNodes(name, sub.myst)));
+            } else {
+                replacement.push({ type: "html", value: String(sub) });
+            }
             last = match.index + full.length;
         }
         if (replacement.length === 0) return;
@@ -117,6 +155,85 @@ export function applyPendingClasses(tree) {
             ]);
         }
     });
+    return tree;
+}
+
+/* ------------------------------------------------------------------------ */
+/* Footnotes                                                                */
+/* ------------------------------------------------------------------------ */
+
+/**
+ * Moves footnote definitions back next to the paragraph that references them.
+ *
+ * markdown-it collects footnote definitions and appends them to the end of the
+ * *document*. In a continuous text that is what you want; on a slide deck it
+ * silently moves the footnote to the last slide. docutils keeps the definition
+ * where it was written, so it is put back beside its reference here - before
+ * the tree is split into slides.
+ */
+/** Node types whose children are block level. */
+const BLOCK_CONTAINERS = new Set([
+    "root",
+    "blockquote",
+    "listItem",
+    "ldTopic",
+    "ldContainer",
+    "ldClassWrapper",
+    "ldCompound",
+    "ldAdmonition",
+    "ldCard",
+    "ldDeck",
+    "ldGrid",
+    "ldCell",
+    "ldStory",
+    "ldScrollable",
+    "ldSupplemental",
+    "ldExercise",
+    "ldSolution",
+    "ldGlobalInformation",
+    "ldPresenterNote",
+]);
+
+export function relocateFootnoteDefinitions(tree) {
+    const definitions = (tree.children ?? []).filter(
+        (child) => child.type === "footnoteDefinition",
+    );
+    if (definitions.length === 0) return tree;
+    tree.children = tree.children.filter(
+        (child) => child.type !== "footnoteDefinition",
+    );
+
+    for (const definition of definitions) {
+        const label = definition.label ?? definition.identifier;
+        let placed = false;
+
+        /** Finds the block that contains the matching reference. */
+        const place = (node) => {
+            if (placed) return;
+            const children = node.children ?? [];
+            for (let i = 0; i < children.length; i++) {
+                const child = children[i];
+                let hasReference = false;
+                visit(child, "footnoteReference", (reference) => {
+                    if ((reference.label ?? reference.identifier) === label) {
+                        hasReference = true;
+                    }
+                });
+                if (!hasReference) continue;
+                // Descend into block containers only - the definition must not
+                // end up *inside* the referencing paragraph.
+                if (BLOCK_CONTAINERS.has(child.type)) place(child);
+                if (!placed) {
+                    children.splice(i + 1, 0, definition);
+                    placed = true;
+                }
+                return;
+            }
+        };
+        place(tree);
+
+        if (!placed) tree.children.push(definition);
+    }
     return tree;
 }
 
@@ -271,6 +388,23 @@ export function markIncrementalCards(tree) {
 export function numberExercises(tree) {
     const passwords = [];
     let count = 0;
+
+    /**
+     * All `ldSolution` nodes anywhere below `node`.
+     *
+     * The visitor must not *return* anything: `unist-util-visit` reads a
+     * numeric return value as the index to continue the traversal from, so a
+     * concise `(s) => found.push(s)` would make it revisit nodes.
+     */
+    const solutionsIn = (node) => {
+        const found = [];
+        visit(node, "ldSolution", (solution) => {
+            found.push(solution);
+        });
+        return found;
+    };
+
+    const claimed = new Set();
     visit(tree, "ldExercise", (exercise) => {
         count += 1;
         const title = exercise.title
@@ -278,19 +412,20 @@ export function numberExercises(tree) {
             : String(count);
         exercise.exerciseId = count;
         exercise.exerciseTitle = title;
-        const solutions = (exercise.children ?? []).filter(
-            (c) => c.type === "ldSolution",
-        );
+        // A solution does not have to be a *direct* child of the exercise; it
+        // is regularly wrapped in a `container` (as in the reST sources).
+        const solutions = solutionsIn(exercise);
         if (solutions.length > 1) {
             throw new Error(`exercise "${title}" has more than one solution`);
         }
         for (const solution of solutions) {
+            claimed.add(solution);
             passwords.push({ title, pwd: solution.pwd });
         }
     });
-    // Solutions outside of exercises are an error.
-    visit(tree, "ldSolution", (solution, index, parent) => {
-        if (parent?.type !== "ldExercise") {
+
+    visit(tree, "ldSolution", (solution) => {
+        if (!claimed.has(solution)) {
             throw new Error("solutions must be nested inside exercises");
         }
     });
@@ -346,10 +481,11 @@ export function collectModules(tree, extraModules = []) {
 
 /* ------------------------------------------------------------------------ */
 
-export function runTransforms(tree, { frontmatter, substitutions }) {
+export function runTransforms(tree, { frontmatter, substitutions, parseMyst }) {
     liftDirectives(tree);
-    applySubstitutions(tree, substitutions);
+    applySubstitutions(tree, substitutions, parseMyst);
     applyPendingClasses(tree);
+    relocateFootnoteDefinitions(tree);
     markSimpleLists(tree);
     buildSlides(tree, frontmatter);
     markIncrementalCards(tree);

@@ -173,6 +173,10 @@ Inhalt.
 | `source`                | `<a>` to the source document                  | `:prefix:`, `:suffix:`, `:path:`                         |
 | `include`               | –                                             | includes and parses another MyST file                    |
 | `class`                 | –                                             | docutils' `.. class::` (next sibling or wrapped content) |
+| `container`             | `<div class="…">`                             | docutils' `.. container::`                               |
+| `rubric`                | `<p class="rubric">`                          | informal heading                                         |
+| `code` / `code-block`   | `<pre class="code …">`                        | `:number-lines:`, `:line-number-digits:`                 |
+| `csv-table`             | `<table>`                                     | `:header:`, `:widths:`, `:file:`; cells are MyST         |
 
 ### Admonitions
 
@@ -202,11 +206,24 @@ Ein Monoid in der Kategorie der Endofunktoren.
 
 `{admonition} Freier Titel` produces an admonition without a theme.
 
+### Code, tables and footnotes
+
+Code blocks are highlighted at build time with Prism, mapped onto **Pygments'**
+class names (`.keyword`, `.name function`, `.comment`, …) so that LectureDoc2's
+`code.css` styles them unchanged. Line numbers use the docutils markup
+(`<small class="ln">` + `<code data-lineno>`) that `ld-copy-to-clipboard.js`
+expects.
+
+Footnotes are rendered in docutils' shape and, unlike in stock mystmd, stay on
+the slide they were written on instead of being collected into one section at
+the end of the document.
+
 ### Roles
 
 `{raw-html}` / `{html}` inserts its value verbatim, `{incremental}` wraps its
-content in `<span class="incremental">`, and every entry of `ld.roles` becomes a
-class-applying role. mystmd's own roles (`{kbd}`, `{sub}`, `{sup}`, `{abbr}`,
+content in `<span class="incremental">`, every entry of `ld.roles` becomes a
+class-applying role and every entry of `ld.code-roles` an inline code role
+(the counterpart of docutils' `.. role:: java(code)`). mystmd's own roles (`{kbd}`, `{sub}`, `{sup}`, `{abbr}`,
 `{del}`, `{sc}`, `{u}`, …) keep working.
 
 ## Nesting fences
@@ -234,6 +251,21 @@ _HTML_ however is produced by `myst2ld`, which owns the mdast → hast handlers
 Because mystmd registers its default directives first and keeps the first
 registration of a name, `src/parse.js` removes the default `admonition` (and its
 aliases) and `include` specs once at start-up so the LectureDoc2 variants win.
+
+## Migrating reStructuredText sources
+
+`tools/rst2myst.mjs` converts an existing `reStructuredTextToLectureDoc2`
+document to MyST. It understands the subset of reST the slide sets use -
+directives, roles, substitutions, field lists, footnotes, `.. class::` - and
+moves the content mechanically so nothing is reworded:
+
+```sh
+node tools/rst2myst.mjs ../deck/folien.de.rst      # -> ../deck/folien.de.md
+```
+
+Review the result afterwards; the shared `docutils.defs` definitions belong in
+`myst.yml` (`ld.roles`, `ld.code-roles`, `substitutions`) rather than in the
+document.
 
 ## Development
 

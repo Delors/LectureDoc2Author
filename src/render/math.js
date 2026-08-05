@@ -9,7 +9,39 @@
  */
 
 import katex from "katex";
-import { visit } from "unist-util-visit";
+
+/**
+ * Characters that KaTeX has no metrics for in text mode. docutils' math
+ * directive performs the same kind of substitution before handing the source
+ * to the math renderer.
+ */
+const UNICODE_TO_TEX = {
+    "µ": "\\mu ",
+    "μ": "\\mu ",
+    "½": "\\frac{1}{2}",
+    "¼": "\\frac{1}{4}",
+    "¾": "\\frac{3}{4}",
+    "−": "-",
+    "·": "\\cdot ",
+    "×": "\\times ",
+    "≤": "\\leq ",
+    "≥": "\\geq ",
+    "≠": "\\neq ",
+    "∞": "\\infty ",
+    "→": "\\rightarrow ",
+    "∈": "\\in ",
+    "…": "\\ldots ",
+};
+
+const UNICODE_PATTERN = new RegExp(
+    `[${Object.keys(UNICODE_TO_TEX).join("")}]`,
+    "g",
+);
+
+/** Applies the substitutions above. */
+export function normalizeTex(tex) {
+    return tex.replace(UNICODE_PATTERN, (c) => UNICODE_TO_TEX[c]);
+}
 
 const DEFAULT_MACROS = {
     "\\RR": "\\mathbb{R}",
@@ -34,7 +66,7 @@ export function renderTex(tex, displayMode, options = {}) {
         trust = false,
         errorColor = "#cc0000",
     } = options;
-    return katex.renderToString(tex, {
+    return katex.renderToString(normalizeTex(tex), {
         displayMode,
         macros: { ...DEFAULT_MACROS, ...macros },
         strict,
@@ -51,6 +83,28 @@ export function renderTex(tex, displayMode, options = {}) {
  * The wrapper elements keep the docutils class names (`math`) so that the
  * existing LectureDoc2 stylesheets continue to apply.
  */
+/**
+ * Walks `children` *and* the auxiliary node arrays our directives use
+ * (`titleNodes`, `formattedTitle`, `caption`, …).
+ *
+ * `unist-util-visit` only follows `children`, so math in an admonition title
+ * such as `:::{example} Folge $a_n$` would otherwise never be rendered.
+ */
+function walkNodeArrays(node, visitor) {
+    for (const [key, value] of Object.entries(node)) {
+        if (!Array.isArray(value)) continue;
+        if (value.length === 0) continue;
+        if (!value.every((v) => v && typeof v === "object" && "type" in v)) {
+            continue;
+        }
+        for (let i = 0; i < value.length; i++) {
+            const child = value[i];
+            walkNodeArrays(child, visitor);
+            visitor(child, i, value, key);
+        }
+    }
+}
+
 export function renderMathEagerly(tree, options = {}) {
     const warnings = [];
     const render = (node, displayMode) => {
@@ -65,23 +119,21 @@ export function renderMathEagerly(tree, options = {}) {
         return html;
     };
 
-    visit(tree, "inlineMath", (node, index, parent) => {
-        if (!parent || index === null) return;
-        parent.children[index] = {
-            type: "html",
-            value: `<span class="math">${render(node, false)}</span>`,
-        };
-    });
-
-    visit(tree, "math", (node, index, parent) => {
-        if (!parent || index === null) return;
-        const id = node.identifier ?? node.label;
-        const attrs = ['class="math"'];
-        if (id) attrs.push(`id="${id}"`);
-        parent.children[index] = {
-            type: "html",
-            value: `<div ${attrs.join(" ")}>${render(node, true)}</div>`,
-        };
+    walkNodeArrays(tree, (node, index, siblings) => {
+        if (node.type === "inlineMath") {
+            siblings[index] = {
+                type: "html",
+                value: `<span class="math">${render(node, false)}</span>`,
+            };
+        } else if (node.type === "math") {
+            const id = node.identifier ?? node.label;
+            const attrs = ['class="math"'];
+            if (id) attrs.push(`id="${id}"`);
+            siblings[index] = {
+                type: "html",
+                value: `<div ${attrs.join(" ")}>${render(node, true)}</div>`,
+            };
+        }
     });
 
     return { tree, warnings };

@@ -64,7 +64,8 @@ export const PARSE_EXTENSIONS = {
     citations: false,
     blocks: true,
     math: true,
-    smartquotes: true,
+    // docutils does not apply smart quotes; keep the author's typography.
+    smartquotes: false,
     strikethrough: true,
 };
 
@@ -74,7 +75,10 @@ export const PARSE_EXTENSIONS = {
  * @param {object} ld the resolved `ld:` configuration
  */
 export function createParseOptions(ld = {}) {
-    const roles = buildRoles(ld.roles ?? {});
+    const roles = buildRoles(
+        ld.roles ?? {},
+        ld["code-roles"] ?? ld.codeRoles ?? {},
+    );
     applyOverrides(ldDirectives, roles);
     return {
         extensions: { ...PARSE_EXTENSIONS, ...(ld.extensions ?? {}) },
