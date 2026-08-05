@@ -58,8 +58,8 @@ async function build(files, options) {
         for (const warning of result.warnings) {
             console.warn(`  math: ${warning.message} in "${warning.tex}"`);
         }
-        for (const { title, pwd } of result.passwords) {
-            console.log(`  exercise ${title}: ${pwd}`);
+        for (const file of result.passwordFiles ?? []) {
+            console.log(`  passwords -> ${path.relative(process.cwd(), file)}`);
         }
         results.push(result);
     }
@@ -177,7 +177,12 @@ async function main() {
             try {
                 fs.watch(dir, { recursive: true }, (_event, filename) => {
                     // Ignore our own output to avoid a rebuild loop.
-                    if (filename && /\.html$/.test(filename)) return;
+                    if (
+                        filename &&
+                        /\.html$|\.passwords\.json/.test(filename)
+                    ) {
+                        return;
+                    }
                     rebuild();
                 });
             } catch (error) {

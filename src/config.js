@@ -33,8 +33,20 @@ export const DEFAULT_LD_CONFIG = {
         /** TeX macros. */
         macros: {},
     },
-    /** Where the extracted exercise passwords are written to. */
-    passwords: undefined,
+    /**
+     * A YAML file with settings that must not be committed - above all the
+     * `master-password`. It is merged into `ld`, is resolved relative to the
+     * project root and is silently ignored when missing, so a fresh clone
+     * still builds (only encrypted content then fails with a clear error).
+     */
+    secrets: "_defs/ld-secrets.yml",
+    /**
+     * Where the collected exercise passwords are written to.
+     *   - `true` (default): `<output>.passwords.json` next to the slides
+     *   - a path: that file (relative to the project root)
+     *   - `false`: do not write them
+     */
+    passwords: true,
     /** Pretty-print the generated HTML. */
     formatHtml: false,
 };
@@ -82,13 +94,33 @@ export function splitFrontmatter(text) {
     return { frontmatter, body: text.slice(match[0].length), offset };
 }
 
+/**
+ * Loads the (git-ignored) secrets file. Returns `{}` when it does not exist.
+ *
+ * @param {string} projectRoot
+ * @param {string|false} relativePath
+ */
+export function loadSecrets(projectRoot, relativePath) {
+    if (!relativePath) return {};
+    const file = path.resolve(projectRoot, relativePath);
+    if (!fs.existsSync(file)) return {};
+    return yaml.load(fs.readFileSync(file, "utf-8")) ?? {};
+}
+
 /** Merges project defaults, project `ld:` settings and document frontmatter. */
-export function resolveConfig({ projectConfig = {}, frontmatter = {} }) {
+export function resolveConfig({
+    projectConfig = {},
+    frontmatter = {},
+    projectRoot = process.cwd(),
+}) {
     const project = projectConfig.project ?? {};
-    const ld = deepMerge(
+    let ld = deepMerge(
         deepMerge(DEFAULT_LD_CONFIG, project.ld ?? {}),
         frontmatter.ld ?? {},
     );
+    // Secrets win over everything so that a checked-in placeholder cannot
+    // shadow the real password.
+    ld = deepMerge(ld, loadSecrets(projectRoot, ld.secrets));
     const substitutions = deepMerge(
         project.substitutions ?? {},
         frontmatter.substitutions ?? {},

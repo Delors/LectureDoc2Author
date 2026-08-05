@@ -94,7 +94,7 @@ export async function convertFile(source, options = {}) {
         options.config ?? findMystConfig(path.dirname(sourcePath));
     const { config: projectConfig, root: projectRoot } =
         loadMystConfig(configPath);
-    const resolved = resolveConfig({ projectConfig, frontmatter });
+    const resolved = resolveConfig({ projectConfig, frontmatter, projectRoot });
     const ld = resolved.ld;
 
     const outPath = path.resolve(options.out ?? outputNameFor(sourcePath));
@@ -218,17 +218,38 @@ export async function convertFile(source, options = {}) {
 
     fs.writeFileSync(outPath, html, "utf-8");
 
-    if (ld.passwords && passwords.length > 0) {
-        const passwordsPath = path.resolve(projectRoot, ld.passwords);
+    /* ---------------------------------------------------------- passwords */
+
+    /*
+     * Two files are written next to the slides:
+     *
+     *   <output>.passwords.json      everything, incl. the master password
+     *   <output>.passwords.json.md   the exercise passwords only
+     *
+     * The Markdown one is what is handed to the students so they can unlock the
+     * sample solutions while preparing for the exam; it deliberately does *not*
+     * contain the master password. Both are generated, contain secrets and
+     * belong in `.gitignore`.
+     */
+    const passwordFiles = [];
+    if (ld.passwords !== false && passwords.length > 0) {
+        const passwordsPath =
+            typeof ld.passwords === "string"
+                ? path.resolve(projectRoot, ld.passwords)
+                : `${outPath}.passwords.json`;
+        const asPairs = passwords.map(({ title, pwd }) => [title, pwd]);
         fs.writeFileSync(
             passwordsPath,
             JSON.stringify(
                 masterPassword
-                    ? [{ "master password": masterPassword }, { passwords }]
-                    : [{ passwords }],
+                    ? [
+                          { "master password": masterPassword },
+                          { passwords: asPairs },
+                      ]
+                    : [{ passwords: asPairs }],
                 null,
                 2,
-            ),
+            ) + "\n",
             "utf-8",
         );
         fs.writeFileSync(
@@ -238,7 +259,8 @@ export async function convertFile(source, options = {}) {
                 .join(""),
             "utf-8",
         );
+        passwordFiles.push(passwordsPath, `${passwordsPath}.md`);
     }
 
-    return { html, outPath, passwords, warnings, tree };
+    return { html, outPath, passwords, passwordFiles, warnings, tree };
 }
