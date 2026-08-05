@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { parseCsv, parseCsvLine } from "../src/directives/index.js";
+import {
+    columnPercentages,
+    lengthOrPercentage,
+    parseCsv,
+    parseCsvLine,
+} from "../src/directives/index.js";
 import { createParseOptions, parse } from "../src/parse.js";
 import { createRenderer } from "../src/render/index.js";
 import { highlight } from "../src/render/highlight.js";
@@ -38,6 +43,44 @@ test("csv-table produces a docutils shaped table", () => {
     assert.match(html, /<tbody><tr><td><p>/);
     // Inline markup inside a cell is parsed.
     assert.match(html, /class="katex"/);
+});
+
+test("`:width:` becomes an inline style, unitless values are px", () => {
+    // docutils' `length_or_percentage_or_unitless`.
+    assert.equal(lengthOrPercentage("100"), "100px");
+    assert.equal(lengthOrPercentage("100%"), "100%");
+    assert.equal(lengthOrPercentage("80em"), "80em");
+    assert.equal(lengthOrPercentage(undefined), undefined);
+
+    const table = (opts) =>
+        render(
+            `\`\`\`{csv-table}\n:header: "A", "B"\n:widths: 35, 65\n${opts}\neins, zwei\n\`\`\``,
+        );
+    assert.match(table(":width: 100"), /<table style="width: 100px;">/);
+    assert.match(table(":width: 100%"), /<table style="width: 100%;">/);
+    // No `:width:` must not leave a stray style behind.
+    assert.doesNotMatch(table(""), /style="width: undefined/);
+    assert.match(table(""), /<table><colgroup>/);
+});
+
+test("column widths are normalized like docutils", () => {
+    assert.deepEqual(columnPercentages([35, 65]), ["35.0%", "65.0%"]);
+    assert.deepEqual(columnPercentages([2, 1]), ["66.7%", "33.3%"]);
+    assert.deepEqual(columnPercentages([1, 3]), ["25.0%", "75.0%"]);
+    assert.equal(columnPercentages([0, 0]), undefined);
+    assert.match(
+        render(
+            '```{csv-table}\n:header: "A", "B"\n:widths: 2, 1\n\neins, zwei\n```',
+        ),
+        /<col style="width: 66\.7%"><col style="width: 33\.3%">/,
+    );
+});
+
+test("`:widths: auto` emits no colgroup", () => {
+    const html = render(
+        '```{csv-table}\n:header: "A", "B"\n:widths: auto\n\neins, zwei\n```',
+    );
+    assert.doesNotMatch(html, /<colgroup>/);
 });
 
 /* ------------------------------------------------- container and rubric */

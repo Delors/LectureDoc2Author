@@ -381,16 +381,14 @@ export function buildHandlers(ctx) {
             children.push(h(node, "caption", {}, allOf(h, node.caption)));
         }
         if (node.widths) {
-            const total = node.widths.reduce((a, b) => a + b, 0);
+            // docutils writes `width: 35.0%` - no trailing semicolon.
             children.push(
                 h(
                     node,
                     "colgroup",
                     {},
                     node.widths.map((w) =>
-                        h(node, "col", {
-                            style: `width: ${Math.round((w / total) * 100)}%;`,
-                        }),
+                        h(node, "col", { style: `width: ${w}` }),
                     ),
                 ),
             );
@@ -410,6 +408,8 @@ export function buildHandlers(ctx) {
                     node.align ? `align-${node.align}` : undefined,
                 ),
                 id: node.identifier,
+                // docutils' `:width:` becomes an inline style on the table.
+                style: node.width ? `width: ${node.width};` : undefined,
             },
             children,
         );

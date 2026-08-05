@@ -184,6 +184,28 @@ export function parseCsvLine(line) {
     return parseCsv(line)[0] ?? [];
 }
 
+/**
+ * docutils' `length_or_percentage_or_unitless` with `px` as the default unit:
+ * `100` -> `100px`, `100%` -> `100%`, `80em` -> `80em`.
+ */
+export function lengthOrPercentage(value, defaultUnit = "px") {
+    if (value === undefined || value === null) return undefined;
+    const text = String(value).trim();
+    if (text === "") return undefined;
+    if (/^\d+(\.\d+)?$/.test(text)) return `${text}${defaultUnit}`;
+    return text;
+}
+
+/**
+ * Normalizes column widths to percentages the way docutils does: relative to
+ * their sum and with one decimal (`35, 65` -> `35.0%`, `65.0%`).
+ */
+export function columnPercentages(widths) {
+    const total = widths.reduce((a, b) => a + b, 0);
+    if (!(total > 0)) return undefined;
+    return widths.map((w) => `${((w / total) * 100).toFixed(1)}%`);
+}
+
 const csvTable = {
     name: "csv-table",
     doc: "A table built from comma separated values.",
@@ -192,6 +214,10 @@ const csvTable = {
         "header": { type: String, doc: "Header row as CSV." },
         "header-rows": { type: String },
         "widths": { type: String, doc: "Relative column widths, or `auto`." },
+        "width": {
+            type: String,
+            doc: "Width of the table; a bare number is taken as `px`.",
+        },
         "align": { type: String },
         "file": { type: String, doc: "Read the values from this file." },
         "delim": { type: String },
@@ -219,12 +245,15 @@ const csvTable = {
             headerRows.push(rows.shift());
         }
 
+        // `:widths: auto` means "let the browser decide" - no colgroup.
         const widths =
             options.widths && options.widths !== "auto"
-                ? options.widths
-                      .split(/[\s,]+/)
-                      .filter(Boolean)
-                      .map(Number)
+                ? columnPercentages(
+                      options.widths
+                          .split(/[\s,]+/)
+                          .filter(Boolean)
+                          .map(Number),
+                  )
                 : undefined;
 
         const toRow = (cells, header) => ({
@@ -244,6 +273,7 @@ const csvTable = {
                 identifier: options.name,
                 align: options.align,
                 widths,
+                width: lengthOrPercentage(options.width),
                 caption: data.arg,
                 children: [
                     ...headerRows.map((cells) => toRow(cells, true)),
