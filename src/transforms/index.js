@@ -359,17 +359,6 @@ export function buildSlides(tree, frontmatter = {}) {
         current.children.push(child);
     }
 
-    // `topic-attrs` configures the slide it appears in.
-    for (const slide of slides) {
-        slide.children = (slide.children ?? []).filter((child) => {
-            if (child.type !== "ldTopicAttrs") return true;
-            slide.class = makeClasses([...(slide.class ?? []), ...child.class]);
-            if (child.identifier) slide.identifier = child.identifier;
-            if (child.noTitle) slide.noTitle = true;
-            return false;
-        });
-    }
-
     // Slides marked `hide-slide` are dropped completely (as in rst2ld).
     const visible = slides.filter(
         (s) => !(s.class ?? []).includes("hide-slide"),

@@ -182,7 +182,6 @@ Inhalt.
 | Directive               | Output                                        | Notes                                                    |
 | ----------------------- | --------------------------------------------- | -------------------------------------------------------- |
 | `topic` / `slide`       | `<ld-topic>`                                  | explicit slide                                           |
-| `topic-attrs`           | –                                             | **deprecated**, use `# Titel {.klasse}`                  |
 | `supplemental`          | `<ld-supplemental>`                           | `:embed-in-document-flow:`                               |
 | `story`                 | `<ld-story>`                                  | scrollable, incremental area                             |
 | `scrollable`            | `<ld-scrollable>`                             | `:height:`                                               |

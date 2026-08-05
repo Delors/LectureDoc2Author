@@ -422,7 +422,7 @@ export function buildHandlers(ctx) {
     const ldTopic = (h, node) => {
         const children = [];
         if (node.titleSlide) {
-            if (node.title && !node.noTitle) {
+            if (node.title) {
                 children.push(
                     h(node, "h1", { class: "title" }, [u("text", node.title)]),
                 );
@@ -437,7 +437,7 @@ export function buildHandlers(ctx) {
             if (node.docinfo && Object.keys(node.docinfo).length > 0) {
                 children.push(docinfo(h, node));
             }
-        } else if (node.titleNodes && !node.noTitle) {
+        } else if (node.titleNodes) {
             children.push(h(node, "h2", {}, allOf(h, node.titleNodes)));
         }
         children.push(...all(h, node));

@@ -48,10 +48,8 @@ test("level-1 headings become slides", () => {
     assert.match(html, /<ld-topic id="eins"><h2>Eins<\/h2>/);
 });
 
-test("topic-attrs configures the enclosing slide", () => {
-    const html = render(
-        "# Eins\n\n```{topic-attrs}\n:class: center-child-elements\n```\n\ntext",
-    );
+test("header attributes configure the slide", () => {
+    const html = render("# Eins {.center-child-elements}\n\ntext");
     assert.match(html, /<ld-topic class="center-child-elements" id="eins">/);
 });
 

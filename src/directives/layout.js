@@ -2,8 +2,6 @@
  * supplemental, compound and the docutils compatible `class` directive.
  */
 
-import { fileWarn } from "myst-common";
-
 import { makeClasses, makeId, titleNode, toText } from "../util.js";
 
 const classOption = { type: String, doc: "Additional CSS classes." };
@@ -31,44 +29,6 @@ const topic = {
                         ? makeId(toText(titleNodes))
                         : undefined),
                 children: [titleNode(titleNodes), ...(data.body ?? [])],
-            },
-        ];
-    },
-};
-
-/**
- * Sets attributes on the *enclosing* slide.
- *
- * @deprecated Use Pandoc style header attributes instead:
- *
- *     # Bewertungskriterien {.center-child-elements}
- */
-const topicAttrs = {
-    name: "topic-attrs",
-    alias: ["slide-attrs"],
-    doc: "Applies classes/ids to the slide the directive appears in.",
-    options: {
-        "class": classOption,
-        "name": nameOption,
-        "no-title": {
-            type: Boolean,
-            doc: "Suppress rendering of the slide's heading.",
-        },
-    },
-    body: { type: String },
-    run(data, vfile) {
-        fileWarn(
-            vfile,
-            "`topic-attrs` is deprecated; write the classes on the heading " +
-                "instead: `# Titel {.klasse}`",
-            { node: data.node, ruleId: "ld-deprecated-directive" },
-        );
-        return [
-            {
-                type: "ldTopicAttrs",
-                class: makeClasses(data.options?.class),
-                identifier: data.options?.name,
-                noTitle: !!data.options?.["no-title"],
             },
         ];
     },
@@ -344,7 +304,6 @@ const moduleDirective = {
 
 export const layoutDirectives = [
     topic,
-    topicAttrs,
     deck,
     card,
     grid,
