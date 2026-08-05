@@ -204,3 +204,68 @@ test("`class` adds to, and can override, the enumeration type", () => {
 test("bullet lists get no enumeration type", () => {
     assert.match(render("- eins\n- zwei"), /<ul class="simple">/);
 });
+
+/* ------------------------------------------- roles in directive arguments */
+
+/*
+ * Two independent reasons made roles in a directive *argument* fall through:
+ *
+ *  - `mystParse` applies roles with `unist-util-select`, which only walks
+ *    `children` - an argument parked in `node.titleNodes` was never visited;
+ *  - for a directive whose body is not MyST, `markChildrenAsProcessed` marks
+ *    the whole subtree processed, including a `type: "myst"` argument.
+ */
+
+const ROLES = { ld: { roles: { eng: "eng" } } };
+
+test("roles work in an admonition title", () => {
+    const html = render(
+        "::::{example} Das Rucksackproblem ({eng}`Knapsack Problem`)\n:class: incremental\n\nText.\n::::",
+        ROLES,
+    );
+    assert.match(html, /<span class="eng">Knapsack Problem<\/span>/);
+    assert.doesNotMatch(html, /role unhandled/);
+    assert.doesNotMatch(html, /\{eng\}/);
+});
+
+test("roles work in a rubric argument", () => {
+    // `rubric` has a non-MyST body, so its argument is parsed explicitly.
+    const html = render(
+        ":::{rubric} Lösung mit Memoisierung ({eng}`Memoization`)\n:::",
+        ROLES,
+    );
+    assert.match(
+        html,
+        /<p class="rubric">Lösung mit Memoisierung \(<span class="eng">Memoization<\/span>\)<\/p>/,
+    );
+});
+
+test("roles work in a csv-table caption", () => {
+    // CommonMark forbids backticks in the info string of a backtick fence, so
+    // an argument containing a role needs a colon fence.
+    const html = render(
+        ':::{csv-table} Klassen ({eng}`classes`)\n:header: "A", "B"\n\neins, zwei\n:::',
+        ROLES,
+    );
+    assert.match(
+        html,
+        /<caption>Klassen \(<span class="eng">classes<\/span>\)<\/caption>/,
+    );
+});
+
+test("roles work in an explicit topic title", () => {
+    const html = render(
+        ":::{topic} Titel ({eng}`title`)\n\nInhalt.\n:::",
+        ROLES,
+    );
+    assert.match(html, /<h2>Titel \(<span class="eng">title<\/span>\)<\/h2>/);
+});
+
+test("math and roles survive together in a title", () => {
+    const html = render(
+        ":::{example} Folge $a_n$ ({eng}`sequence`)\ntext\n:::",
+        ROLES,
+    );
+    assert.match(html, /<span class="math"><span class="katex">/);
+    assert.match(html, /<span class="eng">sequence<\/span>/);
+});

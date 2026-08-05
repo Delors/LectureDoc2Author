@@ -2,7 +2,7 @@
  * supplemental, compound and the docutils compatible `class` directive.
  */
 
-import { makeClasses, makeId, toText } from "../util.js";
+import { makeClasses, makeId, titleNode, toText } from "../util.js";
 
 const classOption = { type: String, doc: "Additional CSS classes." };
 const nameOption = { type: String, doc: "Explicit target name / HTML id." };
@@ -28,8 +28,7 @@ const topic = {
                     (titleNodes.length
                         ? makeId(toText(titleNodes))
                         : undefined),
-                titleNodes,
-                children: data.body ?? [],
+                children: [titleNode(titleNodes), ...(data.body ?? [])],
             },
         ];
     },

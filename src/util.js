@@ -66,6 +66,42 @@ export function generatePassword(length = 8) {
     return groups.join("-");
 }
 
+/**
+ * Wraps the parsed argument of a directive so that it stays reachable through
+ * `children`.
+ *
+ * `mystParse` applies roles (and nested directives) with `unist-util-select`,
+ * which only walks `children`. A directive that stashed its parsed argument in
+ * a property of its own - `titleNodes`, `caption`, … - would therefore keep
+ * unprocessed `mystRole` nodes and render `{eng}`text`` verbatim.
+ *
+ * The argument is therefore emitted as a regular first child and moved to its
+ * final property afterwards by `extractTitles`.
+ *
+ * @param {object[]} nodes the parsed argument
+ * @param {string} prop the property the renderer reads it from
+ */
+export function titleNode(nodes, prop = "titleNodes") {
+    return { type: "ldTitle", prop, children: nodes ?? [] };
+}
+
+/**
+ * Parses `text` as *inline* MyST through the directive context.
+ *
+ * Needed for directives whose body is not MyST (`rubric`, `csv-table`):
+ * `mystParse` marks every descendant of such a directive as processed - see
+ * `markChildrenAsProcessed` - so roles inside a `type: "myst"` argument would
+ * never be applied. Parsing the argument explicitly side-steps that.
+ */
+export function parseInline(ctx, text) {
+    if (!text) return [];
+    const tree = ctx.parseMyst(String(text));
+    const children = tree.children ?? [];
+    return children.length === 1 && children[0].type === "paragraph"
+        ? (children[0].children ?? [])
+        : children;
+}
+
 /** Returns the concatenated text of an mdast (sub)tree. */
 export function toText(node) {
     if (node === undefined || node === null) return "";

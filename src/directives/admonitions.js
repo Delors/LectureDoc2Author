@@ -23,7 +23,7 @@
  * 3. the generic `admonition` directive with a free-form title and no theme.
  */
 
-import { makeClasses } from "../util.js";
+import { makeClasses, titleNode } from "../util.js";
 
 export const STANDARD_ADMONITIONS = [
     "attention",
@@ -79,9 +79,11 @@ function admonitionDirective(kind, { titled }) {
                 standard: !titled,
                 titled,
                 class: makeClasses(data.options?.class),
-                children: data.body ?? [],
+                children: [
+                    ...(titled && data.arg ? [titleNode(data.arg)] : []),
+                    ...(data.body ?? []),
+                ],
             };
-            if (titled && data.arg) node.titleNodes = data.arg;
             if (data.options?.name) node.identifier = data.options.name;
             return [node];
         },
@@ -103,8 +105,7 @@ const genericAdmonition = {
             titled: false,
             generic: true,
             class: makeClasses(data.options?.class),
-            titleNodes: data.arg ?? [],
-            children: data.body ?? [],
+            children: [titleNode(data.arg ?? []), ...(data.body ?? [])],
         };
         if (data.options?.name) node.identifier = data.options.name;
         return [node];

@@ -41,6 +41,30 @@ export function liftDirectives(tree) {
 }
 
 /* ------------------------------------------------------------------------ */
+/* Directive arguments                                                      */
+/* ------------------------------------------------------------------------ */
+
+/**
+ * Moves `ldTitle` children into the property the renderer reads them from.
+ *
+ * Directives emit their parsed argument as a regular child (see `titleNode`)
+ * so that `mystParse` still applies the roles inside it - it walks `children`
+ * only. Once parsing is done the argument is put where it belongs:
+ * `titleNodes`, `formattedTitle`, `caption`, …
+ */
+export function extractTitles(tree) {
+    visit(tree, (node) => {
+        if (!Array.isArray(node.children)) return;
+        node.children = node.children.filter((child) => {
+            if (child.type !== "ldTitle") return true;
+            node[child.prop ?? "titleNodes"] = child.children ?? [];
+            return false;
+        });
+    });
+    return tree;
+}
+
+/* ------------------------------------------------------------------------ */
 /* Substitutions                                                            */
 /* ------------------------------------------------------------------------ */
 
@@ -483,6 +507,7 @@ export function collectModules(tree, extraModules = []) {
 
 export function runTransforms(tree, { frontmatter, substitutions, parseMyst }) {
     liftDirectives(tree);
+    extractTitles(tree);
     applySubstitutions(tree, substitutions, parseMyst);
     applyPendingClasses(tree);
     relocateFootnoteDefinitions(tree);

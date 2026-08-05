@@ -247,6 +247,20 @@ class-applying role and every entry of `ld.code-roles` an inline code role
 (the counterpart of docutils' `.. role:: java(code)`). mystmd's own roles (`{kbd}`, `{sub}`, `{sup}`, `{abbr}`,
 `{del}`, `{sc}`, `{u}`, …) keep working.
 
+### Roles in a directive argument
+
+A role in the argument line contains backticks, and CommonMark forbids those in
+the info string of a backtick fence. Use a colon fence in that case:
+
+```md
+:::{rubric} Lösung mit Memoisierung ({eng}`Memoization`)
+:::
+
+::::{example} Das Rucksackproblem ({eng}`Knapsack Problem`)
+Inhalt.
+::::
+```
+
 ## Nesting fences
 
 MyST closes a colon fence at the first line with **at least as many** colons, so

@@ -6,7 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { currentSource } from "../context.js";
-import { makeClasses } from "../util.js";
+import { makeClasses, parseInline, titleNode } from "../util.js";
 
 const classOption = { type: String, doc: "Additional CSS classes." };
 const nameOption = { type: String, doc: "Explicit target name / HTML id." };
@@ -41,16 +41,16 @@ const container = {
 const rubric = {
     name: "rubric",
     doc: "An informal heading that does not start a new section.",
-    arg: { type: "myst", required: true, doc: "The heading text." },
+    arg: { type: String, required: true, doc: "The heading text." },
     options: { class: classOption, name: nameOption },
     body: { type: String },
-    run(data) {
+    run(data, vfile, ctx) {
         return [
             {
                 type: "ldRubric",
                 class: makeClasses(data.options?.class),
                 identifier: data.options?.name,
-                children: data.arg ?? [],
+                children: parseInline(ctx, data.arg),
             },
         ];
     },
@@ -209,7 +209,7 @@ export function columnPercentages(widths) {
 const csvTable = {
     name: "csv-table",
     doc: "A table built from comma separated values.",
-    arg: { type: "myst", doc: "The table caption." },
+    arg: { type: String, doc: "The table caption." },
     options: {
         "header": { type: String, doc: "Header row as CSV." },
         "header-rows": { type: String },
@@ -274,8 +274,10 @@ const csvTable = {
                 align: options.align,
                 widths,
                 width: lengthOrPercentage(options.width),
-                caption: data.arg,
                 children: [
+                    ...(data.arg
+                        ? [titleNode(parseInline(ctx, data.arg), "caption")]
+                        : []),
                     ...headerRows.map((cells) => toRow(cells, true)),
                     ...rows.map((cells) => toRow(cells, false)),
                 ],

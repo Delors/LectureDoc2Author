@@ -341,6 +341,10 @@ export function buildHandlers(ctx) {
             raw(highlight(node.value ?? "", node.lang)),
         ]);
 
+    /* Normally consumed by `extractTitles`; a fallback so a stray argument is
+     * never swallowed silently. */
+    const ldTitle = (h, node) => h(node, "span", {}, all(h, node));
+
     const ldContainer = (h, node) =>
         h(
             node,
@@ -723,6 +727,7 @@ export function buildHandlers(ctx) {
         list,
         footnoteReference,
         footnoteDefinition,
+        ldTitle,
         ldContainer,
         ldRubric,
         ldTable,

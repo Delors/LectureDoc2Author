@@ -6,7 +6,13 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { currentGlobals, currentRoot, currentSource } from "../context.js";
-import { generatePassword, makeClasses, makeId, toText } from "../util.js";
+import {
+    generatePassword,
+    makeClasses,
+    makeId,
+    titleNode,
+    toText,
+} from "../util.js";
 
 const classOption = { type: String, doc: "Additional CSS classes." };
 
@@ -38,10 +44,19 @@ const exercise = {
             {
                 type: "ldExercise",
                 title: data.arg,
-                formattedTitle: data.options?.["formatted-title"],
                 class: makeClasses(data.options?.class),
                 identifier: data.options?.name,
-                children: data.body ?? [],
+                children: [
+                    ...(data.options?.["formatted-title"]
+                        ? [
+                              titleNode(
+                                  data.options["formatted-title"],
+                                  "formattedTitle",
+                              ),
+                          ]
+                        : []),
+                    ...(data.body ?? []),
+                ],
             },
         ];
     },
@@ -108,9 +123,8 @@ const popover = {
             {
                 type: "ldPopover",
                 popoverId: makeId(toText(titleNodes)),
-                titleNodes,
                 buttonClasses: makeClasses(data.options?.class ?? "popover"),
-                children: data.body ?? [],
+                children: [titleNode(titleNodes), ...(data.body ?? [])],
             },
         ];
     },
@@ -205,13 +219,17 @@ const globalInformation = {
             {
                 type: "ldGlobalInformation",
                 title: data.arg,
-                titleNodes: data.options?.["formatted-title"],
                 symbol: data.options?.symbol,
                 infoType,
                 embed: !!data.options?.embed,
                 class: makeClasses(data.options?.class),
                 identifier: data.options?.name,
-                children: data.body ?? [],
+                children: [
+                    ...(data.options?.["formatted-title"]
+                        ? [titleNode(data.options["formatted-title"])]
+                        : []),
+                    ...(data.body ?? []),
+                ],
             },
         ];
     },
