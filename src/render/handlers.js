@@ -49,10 +49,37 @@ export function buildHandlers(ctx) {
     /* docutils compatibility                                             */
     /* ------------------------------------------------------------------ */
 
+    /**
+     * docutils tags an ordered list with its enumeration type
+     * (`<ol class="arabic simple">`), and LectureDoc2's `common.css` hangs the
+     * `list-style` and the indentation off exactly that class - without it an
+     * ordered list loses its numbering style.
+     *
+     * Markdown only knows decimal enumerators, so the type is `arabic` unless
+     * the author asked for another one via `{class}`.
+     */
+    const ENUM_TYPES = [
+        "arabic",
+        "loweralpha",
+        "upperalpha",
+        "lowerroman",
+        "upperroman",
+    ];
+
     const list = (h, node) => {
         const tag = node.ordered ? "ol" : "ul";
+        const classes = Array.isArray(node.class)
+            ? node.class
+            : node.class
+              ? String(node.class).split(/\s+/)
+              : [];
+        const enumType = node.ordered
+            ? (node.enumtype ??
+              classes.find((c) => ENUM_TYPES.includes(c)) ??
+              "arabic")
+            : undefined;
         const properties = {
-            class: cls(node.class, node.simple ? "simple" : undefined),
+            class: cls(enumType, classes, node.simple ? "simple" : undefined),
         };
         if (node.ordered && node.start !== null && node.start !== 1) {
             properties.start = node.start;

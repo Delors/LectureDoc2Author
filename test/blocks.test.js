@@ -131,3 +131,33 @@ test("footnotes render docutils style and stay in place", () => {
 test("field list bodies are wrapped in a paragraph", () => {
     assert.match(render("Folien\n\n:   inhalt"), /<dd><p>inhalt<\/p><\/dd>/);
 });
+
+/* --------------------------------------------------------- ordered lists */
+
+test("ordered lists carry their docutils enumeration type", () => {
+    // LectureDoc2's `ol.arabic` rule holds the list-style and the indentation.
+    assert.match(render("1. eins\n2. zwei"), /<ol class="arabic simple">/);
+});
+
+test("the enumeration type survives an explicit start", () => {
+    assert.match(
+        render("2. zwei\n3. drei"),
+        /<ol class="arabic simple" start="2">/,
+    );
+});
+
+test("`class` adds to, and can override, the enumeration type", () => {
+    assert.match(
+        render("```{class} incremental-list\n```\n\n1. eins"),
+        /<ol class="arabic incremental-list simple">/,
+    );
+    // An explicit docutils enumeration type replaces `arabic` instead of
+    // fighting with it in the cascade.
+    const roman = render("```{class} lowerroman\n```\n\n1. eins");
+    assert.match(roman, /<ol class="lowerroman simple">/);
+    assert.doesNotMatch(roman, /arabic/);
+});
+
+test("bullet lists get no enumeration type", () => {
+    assert.match(render("- eins\n- zwei"), /<ul class="simple">/);
+});
