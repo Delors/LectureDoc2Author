@@ -151,16 +151,20 @@ Inhalt.
 ## Eine Zwischenüberschrift <!-- rendered as <h3> -->
 ```
 
-Slide attributes are set with `topic-attrs` (the MyST equivalent of putting
-`.. class::` in front of a reST section):
+Classes and an id are attached to a slide with **Pandoc style header
+attributes** - the same syntax Quarto and `markdown-it-attrs` use:
 
-`````md
-# Bewertungskriterien
+```md
+# Landau-Notation {.new-subsection}
 
-```{topic-attrs}
-:class: center-child-elements
+# Beweis {.new-subsection .center-child-elements}
+
+# Zusammenfassung {.transition-fade #fazit}
 ```
-`````
+
+Every token has to start with `.` (class) or `#` (id), so a title that merely
+ends in braces - `# Die Menge {1, 2, 3}` - is left untouched. The same works on
+deeper headings, where the attributes land on the `<h3>`.
 
 Alternatively a slide can be written out explicitly with `{topic}` (alias
 `{slide}`), which is useful when slides are generated:
@@ -178,7 +182,7 @@ Inhalt.
 | Directive               | Output                                        | Notes                                                    |
 | ----------------------- | --------------------------------------------- | -------------------------------------------------------- |
 | `topic` / `slide`       | `<ld-topic>`                                  | explicit slide                                           |
-| `topic-attrs`           | –                                             | sets `class`/`name` on the enclosing slide               |
+| `topic-attrs`           | –                                             | **deprecated**, use `# Titel {.klasse}`                  |
 | `supplemental`          | `<ld-supplemental>`                           | `:embed-in-document-flow:`                               |
 | `story`                 | `<ld-story>`                                  | scrollable, incremental area                             |
 | `scrollable`            | `<ld-scrollable>`                             | `:height:`                                               |

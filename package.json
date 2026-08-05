@@ -28,11 +28,13 @@
         "js-yaml": "^4.1.0",
         "katex": "^0.16.11",
         "mdast-util-to-hast": "^12.3.0",
+        "myst-common": "^1.10.0",
         "myst-parser": "^1.7.3",
         "myst-to-html": "^1.5.15",
         "prismjs": "^1.30.0",
         "unist-builder": "^4.0.0",
-        "unist-util-visit": "^5.0.0"
+        "unist-util-visit": "^5.0.0",
+        "vfile": "^6.0.3"
     },
     "devDependencies": {
         "prettier": "^3.6.2"

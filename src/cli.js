@@ -58,6 +58,10 @@ async function build(files, options) {
         for (const warning of result.warnings) {
             console.warn(`  math: ${warning.message} in "${warning.tex}"`);
         }
+        for (const message of result.messages ?? []) {
+            const at = message.line ? `:${message.line}` : "";
+            console.warn(`  ${file}${at}: ${message.reason}`);
+        }
         for (const file of result.passwordFiles ?? []) {
             console.log(`  passwords -> ${path.relative(process.cwd(), file)}`);
         }

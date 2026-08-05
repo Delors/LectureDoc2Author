@@ -65,6 +65,52 @@ export function extractTitles(tree) {
 }
 
 /* ------------------------------------------------------------------------ */
+/* Heading attributes                                                       */
+/* ------------------------------------------------------------------------ */
+
+/**
+ * Pandoc/Quarto style header attributes:
+ *
+ *     # Landau-Notation {.new-subsection}
+ *     # Beweis {.new-subsection .center-child-elements #beweis}
+ *
+ * Every token has to start with `.` (class) or `#` (id), so a heading that
+ * merely happens to end in braces - `# Die Menge {1, 2, 3}` - is left alone.
+ *
+ * On a level-1 heading the attributes end up on the slide, because
+ * `buildSlides` carries `class` and `identifier` over to the `ldTopic`.
+ */
+const HEADING_ATTRIBUTES = /\s*\{((?:[.#][^\s{}]+)(?:\s+[.#][^\s{}]+)*)\}\s*$/;
+
+export function applyHeadingAttributes(tree) {
+    visit(tree, "heading", (heading) => {
+        const children = heading.children ?? [];
+        const last = children[children.length - 1];
+        if (!last || last.type !== "text") return;
+        const match = HEADING_ATTRIBUTES.exec(last.value ?? "");
+        if (!match) return;
+
+        const classes = [];
+        for (const token of match[1].split(/\s+/)) {
+            if (token.startsWith(".")) classes.push(token.slice(1));
+            else heading.identifier = token.slice(1);
+        }
+        if (classes.length > 0) {
+            heading.class = makeClasses([
+                ...(Array.isArray(heading.class)
+                    ? heading.class
+                    : makeClasses(heading.class)),
+                ...classes,
+            ]);
+        }
+
+        last.value = last.value.slice(0, match.index);
+        if (last.value === "") children.pop();
+    });
+    return tree;
+}
+
+/* ------------------------------------------------------------------------ */
 /* Substitutions                                                            */
 /* ------------------------------------------------------------------------ */
 
@@ -508,6 +554,7 @@ export function collectModules(tree, extraModules = []) {
 export function runTransforms(tree, { frontmatter, substitutions, parseMyst }) {
     liftDirectives(tree);
     extractTitles(tree);
+    applyHeadingAttributes(tree);
     applySubstitutions(tree, substitutions, parseMyst);
     applyPendingClasses(tree);
     relocateFootnoteDefinitions(tree);

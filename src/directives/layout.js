@@ -2,6 +2,8 @@
  * supplemental, compound and the docutils compatible `class` directive.
  */
 
+import { fileWarn } from "myst-common";
+
 import { makeClasses, makeId, titleNode, toText } from "../util.js";
 
 const classOption = { type: String, doc: "Additional CSS classes." };
@@ -35,14 +37,11 @@ const topic = {
 };
 
 /**
- * Sets attributes on the *enclosing* slide. This is the MyST counterpart of
- * putting `.. class:: center-child-elements` in front of a reST section.
+ * Sets attributes on the *enclosing* slide.
  *
- *     # Bewertungskriterien
+ * @deprecated Use Pandoc style header attributes instead:
  *
- *     ```{topic-attrs}
- *     :class: center-child-elements
- *     ```
+ *     # Bewertungskriterien {.center-child-elements}
  */
 const topicAttrs = {
     name: "topic-attrs",
@@ -57,7 +56,13 @@ const topicAttrs = {
         },
     },
     body: { type: String },
-    run(data) {
+    run(data, vfile) {
+        fileWarn(
+            vfile,
+            "`topic-attrs` is deprecated; write the classes on the heading " +
+                "instead: `# Titel {.klasse}`",
+            { node: data.node, ruleId: "ld-deprecated-directive" },
+        );
         return [
             {
                 type: "ldTopicAttrs",

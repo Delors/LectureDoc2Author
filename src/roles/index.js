@@ -112,7 +112,19 @@ export function buildRoles(roleConfig = {}, codeRoleConfig = {}) {
             typeof value === "string" ? value : (value?.language ?? name),
         ),
     );
-    return [...builtinRoles, ...custom, ...codeRoles];
+
+    // The configuration wins over a built-in of the same name; registering
+    // both would make `applyRoles` warn about a duplicate on every parse.
+    const taken = new Set(
+        [...custom, ...codeRoles].flatMap((role) => [
+            role.name,
+            ...(role.alias ?? []),
+        ]),
+    );
+    const builtins = builtinRoles.filter(
+        (role) => ![role.name, ...(role.alias ?? [])].some((n) => taken.has(n)),
+    );
+    return [...custom, ...codeRoles, ...builtins];
 }
 
 export const roles = builtinRoles;

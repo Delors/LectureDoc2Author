@@ -3,6 +3,8 @@
 import fs from "node:fs";
 import path from "node:path";
 
+import { VFile } from "vfile";
+
 import { createParseOptions, parse } from "./parse.js";
 import { relativeHref, vendorKatex } from "./assets.js";
 import {
@@ -103,7 +105,10 @@ export async function convertFile(source, options = {}) {
 
     /* ---------------------------------------------------------- parsing */
 
-    const parseOptions = createParseOptions(ld);
+    // Our own VFile, so that parser warnings (unknown directives,
+    // deprecations, ...) can be reported instead of being swallowed.
+    const vfile = new VFile({ path: sourcePath });
+    const parseOptions = { ...createParseOptions(ld), vfile };
 
     const { result: tree, globals } = withContext(
         sourcePath,
@@ -262,5 +267,13 @@ export async function convertFile(source, options = {}) {
         passwordFiles.push(passwordsPath, `${passwordsPath}.md`);
     }
 
-    return { html, outPath, passwords, passwordFiles, warnings, tree };
+    return {
+        html,
+        outPath,
+        passwords,
+        passwordFiles,
+        warnings,
+        messages: vfile.messages,
+        tree,
+    };
 }

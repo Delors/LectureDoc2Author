@@ -20,11 +20,7 @@ ld:
 Dieser Foliensatz demonstriert {{ ld }} zusammen mit MystToLectureDoc2.
 :::
 
-# Admonitions
-
-```{topic-attrs}
-:class: center-child-elements
-```
+# Admonitions {.center-child-elements}
 
 :::{hint}
 Die neun docutils-Admonitions bekommen ein `data-theme` und ein lokalisiertes

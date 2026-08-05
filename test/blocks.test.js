@@ -269,3 +269,44 @@ test("math and roles survive together in a title", () => {
     assert.match(html, /<span class="math"><span class="katex">/);
     assert.match(html, /<span class="eng">sequence<\/span>/);
 });
+
+/* ------------------------------------------------------ heading attributes */
+
+test("Pandoc style header attributes set the slide's class and id", () => {
+    assert.match(
+        render("# Landau-Notation {.new-subsection}\n\nText."),
+        /<ld-topic class="new-subsection" id="landau-notation">/,
+    );
+    assert.match(
+        render("# Beweis {.a .b #beweis}\n\nText."),
+        /<ld-topic class="a b" id="beweis">/,
+    );
+});
+
+test("the attribute block is removed from the title", () => {
+    const html = render("# Landau-Notation {.new-subsection}\n\nText.");
+    assert.match(html, /<h2>Landau-Notation<\/h2>/);
+    assert.doesNotMatch(html, /new-subsection<\/h2>/);
+});
+
+test("a title that merely ends in braces is left alone", () => {
+    // Every token must start with `.` or `#`.
+    const html = render("# Die Menge {1, 2, 3}\n\nText.");
+    assert.match(html, /<h2>Die Menge \{1, 2, 3\}<\/h2>/);
+    assert.doesNotMatch(html, /class="/);
+});
+
+test("header attributes work on deeper headings too", () => {
+    assert.match(
+        render("# Folie\n\n## Abschnitt {.hervor}\n\nText."),
+        /<h3 class="hervor">Abschnitt<\/h3>/,
+    );
+});
+
+test("header attributes combine with a role in the title", () => {
+    const html = render("# Titel ({eng}`title`) {.hervor}\n\nText.", {
+        ld: { roles: { eng: "eng" } },
+    });
+    assert.match(html, /<ld-topic class="hervor"/);
+    assert.match(html, /<span class="eng">title<\/span>/);
+});
