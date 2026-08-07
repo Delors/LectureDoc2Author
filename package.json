@@ -2,6 +2,11 @@
     "name": "lecturedoc2-author",
     "version": "0.1.0",
     "description": "The LectureDoc2 authoring toolchain: MyST Markdown to LectureDoc2 HTML, PDF rendering, a live-reloading dev server, and manifest-based publishing. The counterpart of `lecturedoc2`, which is the runtime the audience loads.",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/Delors/LectureDoc2Author.git"
+    },
+    "homepage": "https://github.com/Delors/LectureDoc2Author#readme",
     "author": "Michael Eichberg",
     "license": "BSD-3-Clause",
     "type": "module",
