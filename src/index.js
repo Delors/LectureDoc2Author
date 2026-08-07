@@ -1,6 +1,6 @@
-/* Public API of MystToLectureDoc2. */
+/* Public API of LectureDoc2Author. */
 
-export { convertFile } from "./build.js";
+export { convertFile, outputNameFor } from "./build.js";
 export {
     directives,
     STANDARD_ADMONITIONS,

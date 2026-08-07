@@ -11,7 +11,7 @@ export {
     parseCsvLine,
 } from "./blocks.js";
 
-/** All directives provided by MystToLectureDoc2. */
+/** All directives provided by LectureDoc2Author. */
 export const directives = [
     ...admonitionDirectives,
     ...layoutDirectives,

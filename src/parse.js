@@ -29,7 +29,7 @@ function namesOf(spec) {
     return [spec.name, ...alias];
 }
 
-/** Removes the default directives/roles that MystToLectureDoc2 replaces. */
+/** Removes the default directives/roles that LectureDoc2Author replaces. */
 export function applyOverrides(
     directives = ldDirectives,
     roles = buildRoles({}),

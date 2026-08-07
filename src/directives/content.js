@@ -1,11 +1,16 @@
 /* Content related directives: exercise/solution, presenter-note, popover,
- * include-svg, global-information, source and include.
+ * include-svg, global-information, source, include and literalinclude.
  */
 
 import fs from "node:fs";
 import path from "node:path";
 
-import { currentGlobals, currentRoot, currentSource } from "../context.js";
+import {
+    currentGlobals,
+    currentRoot,
+    currentSource,
+    directiveError,
+} from "../context.js";
 import {
     generatePassword,
     makeClasses,
@@ -13,6 +18,13 @@ import {
     titleNode,
     toText,
 } from "../util.js";
+import {
+    CODE_PRESENTATION_OPTIONS,
+    CODE_SELECTION_OPTIONS,
+    buildCodeNode,
+    languageFromPath,
+    selectLines,
+} from "./code-util.js";
 
 const classOption = { type: String, doc: "Additional CSS classes." };
 
@@ -294,14 +306,119 @@ const include = {
     run(data, vfile, ctx) {
         const source = currentSource();
         const target = path.resolve(path.dirname(source), data.arg);
-        let text = fs.readFileSync(target, "utf-8");
-        const startAfter = data.options?.["start-after"];
-        const endBefore = data.options?.["end-before"];
-        if (startAfter)
-            text = text.slice(text.indexOf(startAfter) + startAfter.length);
-        if (endBefore) text = text.slice(0, text.indexOf(endBefore));
+        let text;
+        try {
+            text = fs.readFileSync(target, "utf-8");
+        } catch {
+            throw directiveError(
+                data,
+                `cannot read "${data.arg}" (resolved to ${target})`,
+            );
+        }
+        const startAfter = unquote(data.options?.["start-after"]);
+        const endBefore = unquote(data.options?.["end-before"]);
+        // A marker that is not there must not silently yield the whole file
+        // (or, worse, a slice from index -1).
+        if (startAfter !== undefined) {
+            const at = text.indexOf(startAfter);
+            if (at === -1) {
+                throw directiveError(
+                    data,
+                    `${data.arg}: start-after: ${JSON.stringify(startAfter)} does not occur in the file`,
+                );
+            }
+            text = text.slice(at + startAfter.length);
+        }
+        if (endBefore !== undefined) {
+            const at = text.indexOf(endBefore);
+            if (at === -1) {
+                throw directiveError(
+                    data,
+                    `${data.arg}: end-before: ${JSON.stringify(endBefore)} does not occur after the start marker`,
+                );
+            }
+            text = text.slice(0, at);
+        }
         const parsed = ctx.parseMyst(text);
         return parsed.children ?? [];
+    },
+};
+
+/* --------------------------------------------------------- literalinclude */
+
+/**
+ * Shows (part of) an external file as a code block.
+ *
+ * The point is that the file stays the single source of truth: it can be
+ * compiled, run and tested, while the slide shows only the interesting part
+ * of it. Selecting that part by *marker text* rather than by line numbers
+ * keeps working when the file is edited.
+ *
+ *     ```{literalinclude} code/min_coins_rek.py
+ *     :start-after: "# [begin:core]"
+ *     :end-before: "# [end:core]"
+ *     :dedent:
+ *     :number-lines:
+ *     :emphasize-lines: 3-4
+ *     ```
+ *
+ * The option names are those of Sphinx' and mystmd's `literalinclude`.
+ */
+const literalInclude = {
+    name: "literalinclude",
+    alias: ["include-code"],
+    doc: "Includes (part of) an external file as a code block.",
+    arg: {
+        type: String,
+        required: true,
+        doc: "Path to the file, relative to the current document.",
+    },
+    options: {
+        language: {
+            type: String,
+            alias: ["lang", "code"],
+            doc: "Language for highlighting; inferred from the extension when omitted.",
+        },
+        ...CODE_PRESENTATION_OPTIONS,
+        ...CODE_SELECTION_OPTIONS,
+    },
+    run(data) {
+        const options = { ...(data.options ?? {}) };
+        for (const key of [
+            "start-at",
+            "start-after",
+            "end-at",
+            "end-before",
+        ]) {
+            if (options[key] !== undefined) options[key] = unquote(options[key]);
+        }
+
+        const source = currentSource();
+        const target = path.resolve(path.dirname(source), data.arg);
+        let text;
+        try {
+            text = fs.readFileSync(target, "utf-8");
+        } catch {
+            throw directiveError(
+                data,
+                `cannot read "${data.arg}" (resolved to ${target})`,
+            );
+        }
+
+        let selected;
+        try {
+            selected = selectLines(text, options);
+        } catch (error) {
+            throw directiveError(data, `${data.arg}: ${error.message}`);
+        }
+
+        return [
+            buildCodeNode(options, {
+                lang: options.language ?? languageFromPath(data.arg),
+                value: selected.value,
+                originalFirstLine: selected.firstLineNumber,
+            }),
+        ];
     },
 };
 
@@ -314,4 +431,5 @@ export const contentDirectives = [
     globalInformation,
     sourceDirective,
     include,
+    literalInclude,
 ];

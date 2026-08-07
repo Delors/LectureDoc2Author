@@ -1,17 +1,19 @@
 {
-    "name": "myst-to-lecturedoc2",
+    "name": "lecturedoc2-author",
     "version": "0.1.0",
-    "description": "Converts MyST Markdown documents into LectureDoc2 compatible HTML. Provides the MyST plugins (directives, roles, transforms) and the renderer that replace reStructuredTextToLectureDoc2.",
+    "description": "The LectureDoc2 authoring toolchain: MyST Markdown to LectureDoc2 HTML, PDF rendering, a live-reloading dev server, and manifest-based publishing. The counterpart of `lecturedoc2`, which is the runtime the audience loads.",
     "author": "Michael Eichberg",
     "license": "BSD-3-Clause",
     "type": "module",
     "main": "./src/index.js",
     "exports": {
         ".": "./src/index.js",
-        "./plugin": "./myst-plugin.mjs"
+        "./plugin": "./myst-plugin.mjs",
+        "./pdf": "./src/pdf/render.js",
+        "./package.json": "./package.json"
     },
     "bin": {
-        "myst2ld": "./src/cli.js"
+        "ld2": "./src/cli.js"
     },
     "files": [
         "src",
@@ -25,21 +27,24 @@
         "fmt:check": "prettier --check ."
     },
     "dependencies": {
-        "js-yaml": "^4.1.0",
-        "katex": "^0.16.11",
-        "mdast-util-to-hast": "^12.3.0",
+        "js-yaml": "^5.2.3",
+        "katex": "^0.18.1",
+        "mdast-util-to-hast": "^13.2.1",
         "myst-common": "^1.10.0",
         "myst-parser": "^1.7.3",
         "myst-to-html": "^1.5.15",
         "prismjs": "^1.30.0",
+        "rehype-format": "^5.0.1",
+        "rehype-stringify": "^10.0.1",
+        "unified": "^11.0.5",
         "unist-builder": "^4.0.0",
-        "unist-util-visit": "^5.0.0",
+        "unist-util-visit": "^5.1.0",
         "vfile": "^6.0.3"
     },
     "devDependencies": {
         "prettier": "^3.6.2"
     },
     "engines": {
-        "node": ">=20"
+        "node": ">=22"
     }
 }

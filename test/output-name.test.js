@@ -14,7 +14,7 @@ test("`.html` is appended, the source extension is kept", () => {
 });
 
 test("convertFile writes <source>.md.html by default", async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "myst2ld-out-"));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ld2-out-"));
     try {
         // A myst.yml makes the temporary directory the project root, so the
         // vendored KaTeX assets land there and not in the working directory.
@@ -38,7 +38,7 @@ test("convertFile writes <source>.md.html by default", async () => {
 });
 
 test("--out still wins over the default name", async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "myst2ld-out-"));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ld2-out-"));
     try {
         fs.writeFileSync(
             path.join(dir, "myst.yml"),

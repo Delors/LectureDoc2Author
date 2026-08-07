@@ -189,14 +189,14 @@ test("the enumeration type survives an explicit start", () => {
     );
 });
 
-test("`class` adds to, and can override, the enumeration type", () => {
+test("an attribute line adds to, and can override, the enumeration type", () => {
     assert.match(
-        render("```{class} incremental-list\n```\n\n1. eins"),
+        render("{.incremental-list}\n\n1. eins"),
         /<ol class="arabic incremental-list simple">/,
     );
     // An explicit docutils enumeration type replaces `arabic` instead of
     // fighting with it in the cascade.
-    const roman = render("```{class} lowerroman\n```\n\n1. eins");
+    const roman = render("{.lowerroman}\n\n1. eins");
     assert.match(roman, /<ol class="lowerroman simple">/);
     assert.doesNotMatch(roman, /arabic/);
 });

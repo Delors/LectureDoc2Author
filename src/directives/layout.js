@@ -249,31 +249,6 @@ const compound = {
     },
 };
 
-/* --------------------------------------------------------------- class   */
-
-/**
- * docutils compatible `class` directive.
- *
- * With a body the classes are applied to the contained elements, without a
- * body they are applied to the *next* sibling element (see
- * `docutils.parsers.rst.directives.misc.Class`).
- */
-const classDirective = {
-    name: "class",
-    doc: "Applies CSS classes to the contained or the following element(s).",
-    arg: { type: String, required: true, doc: "The class names." },
-    body: { type: "myst" },
-    run(data) {
-        const classes = makeClasses(data.arg);
-        if (data.body && data.body.length > 0) {
-            return [
-                { type: "ldClassWrapper", class: classes, children: data.body },
-            ];
-        }
-        return [{ type: "ldPendingClass", class: classes }];
-    },
-};
-
 /* --------------------------------------------------------------- module  */
 
 const moduleDirective = {
@@ -312,6 +287,5 @@ export const layoutDirectives = [
     scrollable,
     supplemental,
     compound,
-    classDirective,
     moduleDirective,
 ];

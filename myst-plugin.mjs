@@ -7,9 +7,9 @@
  *     # myst.yml
  *     project:
  *       plugins:
- *         - ../MystToLectureDoc2/myst-plugin.mjs
+ *         - ../LectureDoc2Author/myst-plugin.mjs
  *
- * The LectureDoc2 *HTML* is produced by `myst2ld`, not by mystmd's themes -
+ * The LectureDoc2 *HTML* is produced by `ld2`, not by mystmd's themes -
  * mystmd only needs to know how to parse the directives.
  */
 
@@ -17,7 +17,7 @@ import { directives } from "./src/directives/index.js";
 import { builtinRoles } from "./src/roles/index.js";
 
 const plugin = {
-    name: "MystToLectureDoc2",
+    name: "LectureDoc2Author",
     author: "Michael Eichberg",
     license: "BSD-3-Clause",
     directives,

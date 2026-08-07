@@ -1,9 +1,9 @@
 ---
-title: "MystToLectureDoc2 – Beispielfoliensatz"
+title: "LectureDoc2Author – Beispielfoliensatz"
 lang: de
 author: Michael Eichberg
 keywords: ["MyST", "LectureDoc2"]
-description: "Demonstriert alle von MystToLectureDoc2 unterstützten Direktiven."
+description: "Demonstriert alle von LectureDoc2Author unterstützten Direktiven."
 docinfo:
     Dozent: "[Prof. Dr. Michael Eichberg](https://delors.github.io/cv/folien.de.rst.html)"
     Kontakt: "<michael.eichberg@dhbw.de>"
@@ -17,7 +17,7 @@ ld:
 ---
 
 :::{supplemental}
-Dieser Foliensatz demonstriert {{ ld }} zusammen mit MystToLectureDoc2.
+Dieser Foliensatz demonstriert {{ ld }} zusammen mit LectureDoc2Author.
 :::
 
 # Admonitions {.center-child-elements}
@@ -109,9 +109,7 @@ Sehr langer Inhalt …
 
 ::::{story}
 
-```{class} incremental-list
-
-```
+{.incremental-list}
 
 - Punkt eins
 - Punkt zwei
@@ -133,6 +131,11 @@ Implementieren Sie `fib` iterativ.
 :pwd: lösung-eins
 
 Siehe die Code-Folie.
+:::
+
+:::{hint}
+
+Das Masterpasswort ist: "beispiel-master" und das Passwort für diese Übung ist: "lösung-eins". 
 :::
 
 ::::

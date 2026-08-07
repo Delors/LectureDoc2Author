@@ -57,3 +57,28 @@ export function relativeHref(fromDir, to) {
     const rel = path.relative(fromDir, to);
     return rel.split(path.sep).join("/");
 }
+
+/**
+ * True for references that must not be rewritten: absolute URLs
+ * (`https://…`, `//cdn…`) and server-absolute paths (`/assets/…`).
+ */
+export function isExternalHref(value) {
+    return /^[a-z][a-z0-9+.-]*:|^\/\//i.test(value) || value.startsWith("/");
+}
+
+/**
+ * Turns a path that is *relative to the project root* into an href that is
+ * relative to the directory the document is written to.
+ *
+ * All `ld:` paths use the project root as their base - just like `katex.dir`
+ * and `secrets` - because a deck may sit at any depth below it and a
+ * document-relative value would only ever be correct at one specific depth.
+ *
+ * Absolute URLs are passed through unchanged so that a module can be loaded
+ * from a CDN.
+ */
+export function projectHref(projectRoot, outDir, value) {
+    if (typeof value !== "string" || value === "") return value;
+    if (isExternalHref(value)) return value;
+    return relativeHref(outDir, path.resolve(projectRoot, value));
+}

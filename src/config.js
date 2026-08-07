@@ -9,14 +9,26 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import yaml from "js-yaml";
+// js-yaml 5 is ESM-only and exposes named exports; there is no default export.
+import { load } from "js-yaml";
 
+/*
+ * Every path below is relative to the *project root* (the directory holding
+ * `myst.yml`) and is turned into a document-relative href while a deck is
+ * built. Document-relative values would only ever be correct for decks at one
+ * specific depth below the project root - see `projectHref` in `assets.js`.
+ *
+ * Absolute URLs (`https://…`) are passed through unchanged.
+ */
 export const DEFAULT_LD_CONFIG = {
-    /** Path to LectureDoc2's `src` directory, relative to the output file. */
-    path: "../LectureDoc2/src",
+    /** Path to LectureDoc2's `src` directory, relative to the project root. */
+    path: "LectureDoc2/src",
     /** Theme css, relative to LectureDoc2's `src` directory. */
     theme: undefined,
-    /** `{ name: url }`; a `module` directive/meta entry pulls in the url. */
+    /**
+     * `{ name: url }`; a `module` directive/meta entry pulls in the url.
+     * Local urls are relative to the project root.
+     */
     modules: {},
     /** Custom inline roles: `{ name: "css-class" }`. */
     roles: {},
@@ -24,11 +36,17 @@ export const DEFAULT_LD_CONFIG = {
     katex: {
         /**
          * Directory (relative to the project root) the assets are copied to.
-         * The default puts them next to LectureDoc2's other third-party
-         * assets (`ext/mathjax`, `ext/fonts`, ...).
+         *
+         * They belong to the *project*, not to LectureDoc2: math is rendered
+         * eagerly, so the generated deck references `katex.min.css` while
+         * LectureDoc2 itself has no dependency on KaTeX at all. `shared/ext`
+         * mirrors LectureDoc2's own `ext/` convention for third-party assets.
          */
-        dir: "LectureDoc2/ext/katex",
-        /** Explicit stylesheet href; disables vendoring when set. */
+        dir: "shared/ext/katex",
+        /**
+         * Explicit stylesheet; disables vendoring when set. A local path is
+         * relative to the project root, a URL is used as-is.
+         */
         css: undefined,
         /** TeX macros. */
         macros: {},
@@ -39,7 +57,7 @@ export const DEFAULT_LD_CONFIG = {
      * project root and is silently ignored when missing, so a fresh clone
      * still builds (only encrypted content then fails with a clear error).
      */
-    secrets: "_defs/ld-secrets.yml",
+    secrets: "shared/secrets/ld-secrets.yml",
     /**
      * Where the collected exercise passwords are written to.
      *   - `true` (default): `<output>.passwords.json` next to the slides
@@ -81,7 +99,7 @@ export function findMystConfig(start) {
 export function loadMystConfig(configPath) {
     if (!configPath)
         return { config: {}, root: process.cwd(), path: undefined };
-    const config = yaml.load(fs.readFileSync(configPath, "utf-8")) ?? {};
+    const config = load(fs.readFileSync(configPath, "utf-8")) ?? {};
     return { config, root: path.dirname(configPath), path: configPath };
 }
 
@@ -89,7 +107,7 @@ export function loadMystConfig(configPath) {
 export function splitFrontmatter(text) {
     const match = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/.exec(text);
     if (!match) return { frontmatter: {}, body: text, offset: 0 };
-    const frontmatter = yaml.load(match[1]) ?? {};
+    const frontmatter = load(match[1]) ?? {};
     const offset = match[0].split(/\r?\n/).length - 1;
     return { frontmatter, body: text.slice(match[0].length), offset };
 }
@@ -104,8 +122,15 @@ export function loadSecrets(projectRoot, relativePath) {
     if (!relativePath) return {};
     const file = path.resolve(projectRoot, relativePath);
     if (!fs.existsSync(file)) return {};
-    return yaml.load(fs.readFileSync(file, "utf-8")) ?? {};
+    return load(fs.readFileSync(file, "utf-8")) ?? {};
 }
+
+/**
+ * `ld:` keys that a document's frontmatter may override even against the
+ * secrets file. Only the password belongs here: everything else in a secrets
+ * file is infrastructure that a single deck has no business changing.
+ */
+const DOCUMENT_OVERRIDES = ["master-password", "masterPassword"];
 
 /** Merges project defaults, project `ld:` settings and document frontmatter. */
 export function resolveConfig({
@@ -114,13 +139,26 @@ export function resolveConfig({
     projectRoot = process.cwd(),
 }) {
     const project = projectConfig.project ?? {};
+    const documentLd = frontmatter.ld ?? {};
     let ld = deepMerge(
         deepMerge(DEFAULT_LD_CONFIG, project.ld ?? {}),
-        frontmatter.ld ?? {},
+        documentLd,
     );
-    // Secrets win over everything so that a checked-in placeholder cannot
+    // Secrets win over `myst.yml` so that a checked-in placeholder there cannot
     // shadow the real password.
     ld = deepMerge(ld, loadSecrets(projectRoot, ld.secrets));
+    // A document's own frontmatter, however, is a deliberate per-deck choice
+    // and wins over the shared secrets file - otherwise a self-contained deck
+    // (the example, a handout, a talk) would silently be encrypted with the
+    // project's real master password and leak it into its `.passwords.json`.
+    if (DOCUMENT_OVERRIDES.some((key) => key in documentLd)) {
+        // Drop *both* spellings first: a secrets file using the other one
+        // would otherwise still win via the `??` in `build.js`.
+        for (const key of DOCUMENT_OVERRIDES) delete ld[key];
+        for (const key of DOCUMENT_OVERRIDES) {
+            if (key in documentLd) ld[key] = documentLd[key];
+        }
+    }
     const substitutions = deepMerge(
         project.substitutions ?? {},
         frontmatter.substitutions ?? {},

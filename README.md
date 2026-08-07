@@ -1,7 +1,28 @@
-# MystToLectureDoc2
+# LectureDoc2Author
+
+The authoring toolchain for
+[LectureDoc2](https://github.com/Delors/LectureDoc2): everything that runs in
+Node between writing a deck and it being on a website.
+
+`lecturedoc2` is what the *audience* loads — CSS and ES modules, no Node code.
+`lecturedoc2-author` is what the *author* runs. One command, `ld2`:
+
+```sh
+ld2 build      # MyST Markdown -> LectureDoc2 HTML, only what is stale
+ld2 serve      # build, serve the whole project, watch, live reload
+ld2 watch      # build and publish on change; never renders PDFs
+ld2 pdf        # HTML -> PDF via headless Chrome, on demand
+ld2 publish    # copy what the .publish files name to the target folder
+ld2 status     # what all of the above would do; changes nothing
+```
+
+`build` and `serve` work on loose files. `pdf`, `publish`, `watch` and `status`
+need an `ld.config.json` — see [docs-publishing.md](docs-publishing.md).
+
+## The converter
 
 Converts [MyST Markdown](https://mystmd.org) documents into
-[LectureDoc2](https://github.com/Delors/LectureDoc2) compatible HTML.
+LectureDoc2-compatible HTML.
 
 It is the MyST counterpart of
 [reStructuredTextToLectureDoc2](https://github.com/Delors/reStructuredTextToLectureDoc2)
@@ -19,20 +40,43 @@ and supports the same set of directives — with one deliberate difference:
 ## Install
 
 ```sh
-npm install
-npm link            # optional: makes `myst2ld` available globally
+npm install --save-dev lecturedoc2-author
+```
+
+That puts `ld2` in `node_modules/.bin`, so `npx ld2 …` works and it is on the
+`PATH` of every npm script. Nothing has to be linked globally.
+
+Inside a project that consumes this package as a **git submodule**, declare it
+as an npm workspace instead — one `npm install` at the project root then links
+it into `node_modules/` as a symlink, so `ld2` and `import
+"lecturedoc2-author"` both work while the submodule stays live-editable.
+Workspaces resolve by *package name*, so the directory may be called anything:
+
+```json
+"workspaces": ["LectureDoc2Author"]
+```
+
+Only for hacking on this package standalone:
+
+```sh
+npm install         # inside LectureDoc2Author/
+node src/cli.js …   # or `npm link` to get a global `ld2`
 ```
 
 ## Use
 
 ```sh
-myst2ld slides/folien.de.md              # -> slides/folien.de.md.html
-myst2ld --out-dir build slides/*.md
-myst2ld --watch slides/folien.de.md
-myst2ld --serve slides/folien.de.md      # build + serve + watch + live reload
-myst2ld --serve --port 8080 slides/*.md
-myst2ld --serve --no-live-reload slides/*.md
+npx ld2 build slides/folien.de.md              # -> slides/folien.de.md.html
+npx ld2 build --out-dir build slides/*.md
+npx ld2 build --pretty slides/folien.de.md     # pretty-print the HTML
+npx ld2 serve slides/folien.de.md              # build + serve + watch + live reload
+npx ld2 serve --port 8080 slides/*.md
+npx ld2 serve --no-live-reload slides/*.md
 ```
+
+`ld2 serve` serves the **project root**, not the deck's folder: a generated deck
+references `../LectureDoc2/src/ld.js` and any shared assets, so serving only the
+deck directory would 404 on everything it needs.
 
 Everything else is configured in `myst.yml` (see below) and in the document's
 frontmatter.
@@ -48,15 +92,15 @@ therefore recognizable at a glance and a single `*.md.html` line in
 ### The development server
 
 LectureDoc2 loads `ld.js` as an ES module and uses `crypto.subtle`, so the
-slides have to be served over HTTP — `file://` does not work. `--serve` starts a
-dependency-free `node:http` server (so no Python or extra package is needed),
-serving **the project root** — the directory containing `myst.yml` — because the
-generated HTML references `../LectureDoc2/…`.
+slides have to be served over HTTP — `file://` does not work. `ld2 serve` starts
+a dependency-free `node:http` server (so no Python or extra package is needed),
+serving **the project root** — the `ld.config.json` directory, or failing that
+the `myst.yml` one — because the generated HTML references LectureDoc2 and the
+shared assets relative to it.
 
 | Flag | Meaning |
 | --- | --- |
-| `--serve` | serve and watch with live reload |
-| `--port <n>` | port (default 8000); `--serve 8080` and `--serve=8080` are shorthands |
+| `--port <n>` | port (default 8000) |
 | `--root <dir>` | serve a different directory |
 | `--host <host>` | bind address (default `127.0.0.1`) |
 | `--no-live-reload` | do not inject the reload script |
@@ -66,29 +110,37 @@ If the port is taken, the next free one (up to +20) is used. Responses carry
 `Cache-Control: no-store`. The server can also be used stand-alone:
 
 ```sh
-node node_modules/myst-to-lecturedoc2/src/serve.js <root> <port>
+node node_modules/lecturedoc2-author/src/serve.js <root> <port>
 ```
 
 ## Project configuration
+
+Every path below `ld:` is relative to the **project root** (the directory that
+holds `myst.yml`) and is rewritten into a document-relative href for each deck,
+so decks may sit at any depth. Absolute URLs are used as-is. The one exception
+is `theme`, which is relative to LectureDoc2's `src` folder.
+
+A `master-password` given in a document's frontmatter overrides the one from
+the secrets file, so a self-contained deck can encrypt with its own password.
 
 ```yaml
 version: 1
 project:
     plugins:
-        - MystToLectureDoc2/myst-plugin.mjs # so `myst start` understands the directives
+        - LectureDoc2Author/myst-plugin.mjs # so `myst start` understands the directives
     ld:
-        path: ../LectureDoc2/src # relative to the generated HTML
+        path: LectureDoc2/src # relative to the project root
         theme: css/themes/dhbw.css # relative to LectureDoc2's src folder
-        modules:
-            animated-logo: ../LectureDoc2/src/css/themes/DHBW/animated-logo.js
-            timeline: ../LectureDoc2/components/ld-timeline.js
+        modules: # local urls are relative to the project root
+            animated-logo: LectureDoc2/src/css/themes/DHBW/animated-logo.js
+            timeline: LectureDoc2/components/ld-timeline.js
         katex:
-            dir: LectureDoc2/ext/katex # assets are copied here (project root)
+            dir: shared/ext/katex # assets are copied here (project root)
             macros:
                 "\\RR": "\\mathbb{R}"
         roles: # custom inline roles
             eng: english # {eng}`text` -> <span class="english">
-        secrets: _defs/ld-secrets.yml # git-ignored; holds master-password
+        secrets: shared/secrets/ld-secrets.yml # git-ignored; holds master-password
         passwords: true # write <output>.passwords.json[.md] (default)
 ```
 
@@ -117,11 +169,11 @@ ld:
 
 The `master-password` (required for encrypted solutions and presenter notes)
 must never sit in a committed file. It is read from the YAML file named by
-`ld.secrets` — `_defs/ld-secrets.yml` by default — which is merged into `ld` and
+`ld.secrets` — `shared/secrets/ld-secrets.yml` by default — which is merged into `ld` and
 silently ignored when absent:
 
 ```yaml
-# _defs/ld-secrets.yml   (git-ignored)
+# shared/secrets/ld-secrets.yml   (git-ignored)
 master-password: …
 ```
 
@@ -177,6 +229,38 @@ Inhalt.
 :::
 ```
 
+## Attribute lines
+
+Any other block gets its classes and its id from an **attribute line** written
+directly above it — the block-level counterpart of the header attributes:
+
+```md
+{.incremental-list}
+
+- Erster Punkt
+- Zweiter Punkt
+
+{.columns .evenly-spaced}
+
+| A | B |
+| - | - |
+
+{.minor #anmerkung}
+
+Ein Absatz.
+```
+
+The line has to be a paragraph of its own — a blank line before **and** after —
+and may contain nothing but the attribute list; every token starts with `.`
+(class) or `#` (id). Several lines in a row all apply to the block below them,
+in the order written.
+
+The rule is applied to the parsed document rather than to the source text, so a
+`{.klasse}` inside a code block or a literal directive body is never touched —
+it simply is not a paragraph. In running text, write it as inline code:
+`` `{.klasse}` ``. And a paragraph that merely happens to consist of braces —
+`{1, 2, 3}` — does not match, because every token has to start with `.` or `#`.
+
 ## Directives
 
 | Directive               | Output                                        | Notes                                                    |
@@ -196,11 +280,56 @@ Inhalt.
 | `presenter-note`        | `<ld-presenter-note encrypted>`               | needs a master password                                  |
 | `source`                | `<a>` to the source document                  | `:prefix:`, `:suffix:`, `:path:`                         |
 | `include`               | –                                             | includes and parses another MyST file                    |
-| `class`                 | –                                             | docutils' `.. class::` (next sibling or wrapped content) |
+| `literalinclude`        | `<pre class="code …">`                        | shows (part of) an external file as code                 |
 | `container`             | `<div class="…">`                             | docutils' `.. container::`                               |
 | `rubric`                | `<p class="rubric">`                          | informal heading                                         |
-| `code` / `code-block`   | `<pre class="code …">`                        | `:number-lines:`, `:line-number-digits:`                 |
+| `code` / `code-block`   | `<pre class="code …">`                        | `:number-lines:`, `:emphasize-lines:`                    |
 | `csv-table`             | `<table>`                                     | `:header:`, `:widths:`, `:file:`; cells are MyST         |
+
+### Including code from a file
+
+Keep runnable code in a real file and show only the interesting part of it, so
+that the deck cannot drift away from code that still compiles and runs:
+
+````md
+```{literalinclude} code/min_coins.py
+:start-after: "# [begin:core]"
+:end-before: "# [end:core]"
+:dedent:
+:number-lines:
+:emphasize-lines: 3-4
+```
+````
+
+The directive is also available as `include-code`; the option names are those
+of Sphinx' and mystmd's `literalinclude`.
+
+| Option | Meaning |
+| --- | --- |
+| `:language:` (`:lang:`) | highlighting language; inferred from the file extension when omitted |
+| `:start-after:` / `:start-at:` | begin after / at the first line containing the given text |
+| `:end-before:` / `:end-at:` | end before / at the first such line after the start |
+| `:lines:` | explicit selection, e.g. `1,3,5-10,20-` |
+| `:start-line:` / `:end-line:` | 1-based, inclusive |
+| `:dedent:` | strip a given number of leading spaces, or the common indentation |
+| `:lineno-match:` | number the lines as they are numbered in the file |
+| `:number-lines:` / `:lineno-start:` | number the lines starting at 1 or a given value |
+| `:emphasize-lines:` | highlight lines, counted from 1 **within the block** |
+| `:class:` / `:name:` | as everywhere else |
+
+Prefer the marker options over `:lines:` — a line range silently shows the
+wrong code once the file is edited, whereas a marker that no longer exists
+**fails the build** with the file name and the missing marker. Markers are
+ordinary comments in the source file, so the file still runs:
+
+```python
+# [begin:core]
+def min_coins(n, coins): ...
+# [end:core]
+```
+
+`:emphasize-lines:` puts `class="emphasized"` on the affected `<code>` line and
+its gutter entry; LectureDoc2's `code.css` styles both.
 
 ### Admonitions
 
@@ -282,7 +411,7 @@ it:
 
 `myst-plugin.mjs` exports the directives and roles in the standard MyST plugin
 format, so `myst start`/`myst build` can parse the documents. The LectureDoc2
-_HTML_ however is produced by `myst2ld`, which owns the mdast → hast handlers
+_HTML_ however is produced by `ld2`, which owns the mdast → hast handlers
 (LectureDoc2's stylesheets expect docutils-shaped markup: `<ul class="simple">`,
 `<li><p>…</p></li>`, `<dl class="field-list">`, …).
 

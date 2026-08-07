@@ -7,6 +7,7 @@ import path from "node:path";
 
 import { currentSource } from "../context.js";
 import { makeClasses, parseInline, titleNode } from "../util.js";
+import { CODE_PRESENTATION_OPTIONS, buildCodeNode } from "./code-util.js";
 
 const classOption = { type: String, doc: "Additional CSS classes." };
 const nameOption = { type: String, doc: "Explicit target name / HTML id." };
@@ -58,14 +59,6 @@ const rubric = {
 
 /* ------------------------------------------------------------------- code */
 
-function lineNumberDigits(value) {
-    const digits = Number.parseInt(value, 10);
-    if (Number.isNaN(digits) || digits < 1 || digits > 4) {
-        throw new Error("line-number-digits must be between 1 and 4");
-    }
-    return digits;
-}
-
 /**
  * `code` / `code-block` with docutils' options.
  *
@@ -78,46 +71,14 @@ const code = {
     alias: ["code-block", "sourcecode"],
     doc: "A literal code block with optional syntax highlighting.",
     arg: { type: String, doc: "The language." },
-    options: {
-        "number-lines": {
-            type: String,
-            doc: "Show line numbers, optionally starting at the given number.",
-        },
-        "linenos": { type: Boolean },
-        "lineno-start": { type: String },
-        "line-number-digits": { type: String },
-        "emphasize-lines": { type: String },
-        "class": classOption,
-        "name": nameOption,
-        "caption": { type: String },
-    },
+    options: { ...CODE_PRESENTATION_OPTIONS },
     body: { type: String, required: true },
     run(data) {
-        const options = data.options ?? {};
-        const numberLines = options["number-lines"];
-        const showLineNumbers =
-            numberLines !== undefined || options.linenos === true;
-        const start =
-            (numberLines !== undefined && numberLines !== ""
-                ? Number.parseInt(numberLines, 10)
-                : undefined) ??
-            (options["lineno-start"]
-                ? Number.parseInt(options["lineno-start"], 10)
-                : undefined) ??
-            1;
         return [
-            {
-                type: "code",
+            buildCodeNode(data.options ?? {}, {
                 lang: data.arg,
-                class: makeClasses(options.class),
-                identifier: options.name,
-                showLineNumbers,
-                startingLineNumber: Number.isNaN(start) ? 1 : start,
-                lineNumberDigits: options["line-number-digits"]
-                    ? lineNumberDigits(options["line-number-digits"])
-                    : undefined,
                 value: data.body ?? "",
-            },
+            }),
         ];
     },
 };

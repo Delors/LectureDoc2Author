@@ -6,7 +6,7 @@ import path from "node:path";
 import { VFile } from "vfile";
 
 import { createParseOptions, parse } from "./parse.js";
-import { relativeHref, vendorKatex } from "./assets.js";
+import { projectHref, relativeHref, vendorKatex } from "./assets.js";
 import {
     findMystConfig,
     loadMystConfig,
@@ -90,7 +90,8 @@ export function outputNameFor(source) {
 export async function convertFile(source, options = {}) {
     const sourcePath = path.resolve(source);
     const text = fs.readFileSync(sourcePath, "utf-8");
-    const { frontmatter, body } = splitFrontmatter(text);
+    const { frontmatter, body, offset: frontmatterOffset } =
+        splitFrontmatter(text);
 
     const configPath =
         options.config ?? findMystConfig(path.dirname(sourcePath));
@@ -113,7 +114,7 @@ export async function convertFile(source, options = {}) {
     const { result: tree, globals } = withContext(
         sourcePath,
         () => parse(body, parseOptions),
-        { root: projectRoot },
+        { root: projectRoot, frontmatterOffset },
     );
 
     /* ------------------------------------------------------------- math */
@@ -133,6 +134,7 @@ export async function convertFile(source, options = {}) {
             id: ld.id,
         },
         substitutions: resolved.substitutions,
+        vfile,
         parseMyst: (value) =>
             withContext(sourcePath, () => parse(String(value), parseOptions), {
                 root: projectRoot,
@@ -174,7 +176,7 @@ export async function convertFile(source, options = {}) {
 
     /* ----------------------------------------------------------- assets */
 
-    let katexCss = ld.katex?.css;
+    let katexCss = projectHref(projectRoot, outDir, ld.katex?.css);
     if (katexCss === undefined) {
         const katexDir = path.resolve(projectRoot, ld.katex?.dir ?? "katex");
         const cssPath = vendorKatex(katexDir);
@@ -186,7 +188,8 @@ export async function convertFile(source, options = {}) {
     const moduleNames = collectModules(tree, ld.requiredModules ?? []);
     const modules = moduleNames
         .map((name) => ld.modules?.[name])
-        .filter((url) => typeof url === "string");
+        .filter((url) => typeof url === "string")
+        .map((url) => projectHref(projectRoot, outDir, url));
 
     /* ------------------------------------------------------------- output */
 
@@ -211,7 +214,7 @@ export async function convertFile(source, options = {}) {
         lang: resolved.lang,
         title: resolved.title,
         meta,
-        ldPath: ld.path,
+        ldPath: projectHref(projectRoot, outDir, ld.path),
         theme: ld.theme,
         katexCss,
         modules,

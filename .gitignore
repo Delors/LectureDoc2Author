@@ -2,3 +2,9 @@ node_modules/
 *.log
 .DS_Store
 Icon?
+
+# Generated slide decks and everything derived from them. The passwords files
+# contain the master password in cleartext and must never be committed.
+*.md.html*
+*.passwords.json
+*.passwords.json.md

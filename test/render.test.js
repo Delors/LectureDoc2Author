@@ -53,9 +53,37 @@ test("header attributes configure the slide", () => {
     assert.match(html, /<ld-topic class="center-child-elements" id="eins">/);
 });
 
-test("the class directive applies to the next element", () => {
-    const html = render("```{class} incremental-list\n```\n\n- a\n- b");
+test("an attribute line applies to the next element", () => {
+    const html = render("{.incremental-list}\n\n- a\n- b");
     assert.match(html, /<ul class="incremental-list simple">/);
+});
+
+test("an attribute line carries classes and an id", () => {
+    const html = render("{.minor #hinweis}\n\nText.");
+    assert.match(html, /<p class="minor" id="hinweis">Text\.<\/p>/);
+});
+
+test("consecutive attribute lines accumulate", () => {
+    assert.match(render("{.a}\n\n{.b}\n\n- eins"), /<ul class="a b simple">/);
+});
+
+test("an attribute line works inside a directive body", () => {
+    assert.match(
+        render(":::{card}\n\n{.incremental-list}\n\n- a\n:::"),
+        /<ul class="incremental-list simple">/,
+    );
+});
+
+test("braces that are not an attribute list are left alone", () => {
+    const html = render("Die Menge {1, 2, 3} und {nicht .so}.");
+    assert.match(html, /\{1, 2, 3\}/);
+    assert.match(html, /\{nicht \.so\}/);
+});
+
+test("an attribute list in inline code stays literal", () => {
+    const html = render("`{.incremental-list}`\n\n- a");
+    assert.match(html, /class="docutils literal">\{\.incremental-list\}</);
+    assert.match(html, /<ul class="simple">/);
 });
 
 test("lists follow the docutils 'simple' rules", () => {

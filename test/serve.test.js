@@ -31,7 +31,7 @@ function request(urlPath, { raw = false } = {}) {
 }
 
 before(async () => {
-    root = fs.mkdtempSync(path.join(os.tmpdir(), "myst2ld-serve-"));
+    root = fs.mkdtempSync(path.join(os.tmpdir(), "ld2-serve-"));
     fs.mkdirSync(path.join(root, "deck"));
     fs.mkdirSync(path.join(root, "assets"));
     fs.writeFileSync(
@@ -59,7 +59,7 @@ test("serves HTML with the right content type and no caching", async () => {
 
 test("injects the live reload client into HTML", async () => {
     const res = await request("/folien.html");
-    assert.match(res.body, /__myst2ld__\/reload/);
+    assert.match(res.body, /__ld2__\/reload/);
     assert.match(res.body, /<\/body>\s*$|EventSource/);
 });
 
@@ -88,7 +88,7 @@ test("directories are listed", async () => {
 test("reload() pushes an event to connected clients", async () => {
     const received = await new Promise((resolve) => {
         const chunks = [];
-        const req = http.get(server.url + "/__myst2ld__/reload", (res) => {
+        const req = http.get(server.url + "/__ld2__/reload", (res) => {
             assert.match(res.headers["content-type"], /text\/event-stream/);
             res.on("data", (chunk) => {
                 chunks.push(chunk.toString());

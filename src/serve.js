@@ -43,11 +43,11 @@ const MIME_TYPES = {
     ".wasm": "application/wasm",
 };
 
-const RELOAD_PATH = "/__myst2ld__/reload";
+const RELOAD_PATH = "/__ld2__/reload";
 
 const RELOAD_SNIPPET = `
 <script type="module">
-    // injected by myst2ld --serve
+    // injected by ld2 serve
     const source = new EventSource("${RELOAD_PATH}");
     source.addEventListener("reload", () => location.reload());
     source.addEventListener("error", () => {

@@ -10,8 +10,9 @@
  * 2. handlers for the LectureDoc2 specific nodes produced by our directives.
  */
 
-import { all } from "mdast-util-to-hast";
 import { u } from "unist-builder";
+
+import { all } from "./hast-compat.js";
 
 import { classAttr, escapeHtml, mergeClasses } from "../util.js";
 import { highlight } from "./highlight.js";
@@ -56,7 +57,7 @@ export function buildHandlers(ctx) {
      * ordered list loses its numbering style.
      *
      * Markdown only knows decimal enumerators, so the type is `arabic` unless
-     * the author asked for another one via `{class}`.
+     * the author asked for another one in an attribute line.
      */
     const ENUM_TYPES = [
         "arabic",
@@ -185,6 +186,10 @@ export function buildHandlers(ctx) {
         const value = node.value ?? "";
         const children = [];
         const showLineNumbers = node.showLineNumbers || node.linenos;
+        // `emphasize-lines` counts from 1 within the block, independently of
+        // the number the gutter starts at (docutils / mystmd behaviour).
+        const emphasized = new Set(node.emphasizeLines ?? []);
+
         if (showLineNumbers) {
             const lines = value.split("\n");
             const start = node.startingLineNumber ?? node.lineno_start ?? 1;
@@ -194,20 +199,61 @@ export function buildHandlers(ctx) {
             );
             lines.forEach((line, i) => {
                 const number = ` ${String(start + i).padStart(digits, " ")} `;
+                const hot = emphasized.has(i + 1);
                 children.push(
-                    h(node, "small", { class: "ln" }, [u("text", number)]),
+                    h(
+                        node,
+                        "small",
+                        { class: cls("ln", hot ? "emphasized" : undefined) },
+                        [u("text", number)],
+                    ),
                 );
                 children.push(
-                    h(node, "code", { "data-lineno": number }, [
-                        raw(
-                            highlight(line, language) +
-                                (i < lines.length - 1 ? "\n" : ""),
-                        ),
-                    ]),
+                    h(
+                        node,
+                        "code",
+                        {
+                            "data-lineno": number,
+                            "class": hot ? "emphasized" : undefined,
+                        },
+                        [
+                            raw(
+                                highlight(line, language) +
+                                    (i < lines.length - 1 ? "\n" : ""),
+                            ),
+                        ],
+                    ),
                 );
             });
             return h(node, "pre", properties, children);
         }
+
+        // Without a gutter a single `<code>` holds everything - unless
+        // individual lines have to be addressable for emphasis.
+        if (emphasized.size > 0) {
+            const lines = value.split("\n");
+            lines.forEach((line, i) => {
+                children.push(
+                    h(
+                        node,
+                        "code",
+                        {
+                            class: emphasized.has(i + 1)
+                                ? "emphasized"
+                                : undefined,
+                        },
+                        [
+                            raw(
+                                highlight(line, language) +
+                                    (i < lines.length - 1 ? "\n" : ""),
+                            ),
+                        ],
+                    ),
+                );
+            });
+            return h(node, "pre", properties, children);
+        }
+
         children.push(raw(highlight(value, language)));
         return h(node, "pre", properties, [h(node, "code", {}, children)]);
     };
@@ -605,9 +651,6 @@ export function buildHandlers(ctx) {
             all(h, node),
         );
 
-    const ldClassWrapper = (h, node) =>
-        h(node, "div", { class: cls(node.class) }, all(h, node));
-
     const ldModule = (h, node) =>
         h(
             node,
@@ -755,7 +798,6 @@ export function buildHandlers(ctx) {
         ldGrid,
         ldCell,
         ldCompound,
-        ldClassWrapper,
         ldModule,
         ldSpan,
         ldKbd,

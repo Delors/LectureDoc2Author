@@ -1,8 +1,7 @@
 /* mdast -> HTML rendering. */
 
-import { mystToHtml } from "myst-to-html";
-
 import { buildHandlers } from "./handlers.js";
+import { mystToHtml } from "./to-html.js";
 
 /**
  * Creates a renderer bound to a document context.

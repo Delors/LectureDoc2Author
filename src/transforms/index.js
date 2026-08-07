@@ -1,5 +1,6 @@
 /* mdast -> mdast transforms that run between parsing and rendering. */
 
+import { fileWarn } from "myst-common";
 import { visit } from "unist-util-visit";
 
 import { makeClasses, makeId, toText } from "../util.js";
@@ -111,6 +112,119 @@ export function applyHeadingAttributes(tree) {
 }
 
 /* ------------------------------------------------------------------------ */
+/* Block attributes                                                         */
+/* ------------------------------------------------------------------------ */
+
+/**
+ * An attribute line attaches classes and an id to the block that follows it:
+ *
+ *     {.incremental-list}
+ *
+ *     1. Alle kleineren Ringe müssen auf den Hilfsstab.
+ *     2. Der grösste Ring kommt auf den Zielstab.
+ *
+ * The line has to be a paragraph of its own that contains nothing but the
+ * attribute list - every token starting with `.` (class) or `#` (id). To write
+ * one literally, use inline code: `` `{.klasse}` ``, which is a different node
+ * type and therefore never matched.
+ *
+ * Working on the tree (rather than on the source) is what makes this safe:
+ * the content of a code block or of a literal directive body never becomes a
+ * `paragraph`, so it is structurally impossible to mistake a code sample for
+ * an attribute line.
+ */
+const BLOCK_ATTRIBUTES = /^\{((?:[.#][^\s{}]+)(?:\s+[.#][^\s{}]+)*)\}$/;
+
+/** Applies `.class` / `#id` tokens to `node`. */
+function assignAttributes(node, tokens) {
+    const classes = [];
+    for (const token of tokens.split(/\s+/)) {
+        if (token.startsWith(".")) classes.push(token.slice(1));
+        else node.identifier = token.slice(1);
+    }
+    if (classes.length > 0) {
+        node.class = makeClasses([
+            ...(Array.isArray(node.class)
+                ? node.class
+                : makeClasses(node.class)),
+            ...classes,
+        ]);
+    }
+}
+
+/** The attribute list of a paragraph that consists of nothing else. */
+function attributeLine(node) {
+    if (node?.type !== "paragraph") return undefined;
+    const children = node.children ?? [];
+    if (children.length !== 1 || children[0].type !== "text") return undefined;
+    return BLOCK_ATTRIBUTES.exec((children[0].value ?? "").trim())?.[1];
+}
+
+export function applyBlockAttributes(tree, vfile) {
+    visit(tree, (node) => {
+        const children = node.children;
+        if (!Array.isArray(children)) return;
+
+        for (let i = 0; i < children.length; i++) {
+            const child = children[i];
+
+            if (attributeLine(child) !== undefined) {
+                /*
+                 * Several attribute lines in a row all belong to the same
+                 * block, and they are applied in the order they were written.
+                 */
+                let run = 0;
+                const tokens = [];
+                while (attributeLine(children[i + run]) !== undefined) {
+                    tokens.push(attributeLine(children[i + run]));
+                    run += 1;
+                }
+                const target = children[i + run];
+                if (target) {
+                    for (const t of tokens) assignAttributes(target, t);
+                    children.splice(i, run);
+                    i -= 1; // the target now sits at `i`; look at it next
+                } else if (vfile) {
+                    fileWarn(
+                        vfile,
+                        `attribute line {${tokens.join(" ")}} has no block to ` +
+                            "attach to - it is the last thing in its container",
+                        { node: child, ruleId: "ld-block-attributes" },
+                    );
+                    i += run - 1;
+                }
+                continue;
+            }
+
+            /*
+             * A paragraph *starting* with an attribute line means the line was
+             * absorbed as a lazy continuation - CommonMark only lets a few
+             * block types interrupt a paragraph, an ordered list starting at
+             * something other than 1 among them. Warn instead of silently
+             * doing nothing.
+             */
+            if (child.type === "paragraph") {
+                const first = (child.children ?? [])[0];
+                const swallowed =
+                    first?.type === "text" &&
+                    /^\{(?:[.#][^\s{}]+)(?:\s+[.#][^\s{}]+)*\}\n/.test(
+                        first.value ?? "",
+                    );
+                if (swallowed && vfile) {
+                    fileWarn(
+                        vfile,
+                        "an attribute line was absorbed into the following " +
+                            "paragraph - put a blank line after it",
+                        { node: child, ruleId: "ld-block-attributes" },
+                    );
+                }
+            }
+        }
+    });
+    return tree;
+}
+
+/* ------------------------------------------------------------------------ */
 /* Substitutions                                                            */
 /* ------------------------------------------------------------------------ */
 
@@ -190,45 +304,6 @@ export function applySubstitutions(tree, substitutions = {}, parseMyst) {
 }
 
 /* ------------------------------------------------------------------------ */
-/* docutils `class` directive                                               */
-/* ------------------------------------------------------------------------ */
-
-/**
- * Applies `ldPendingClass` nodes to their next sibling (or, when they are the
- * last child, to their parent) exactly as docutils' `.. class::` does, and
- * then removes them from the tree.
- */
-export function applyPendingClasses(tree) {
-    visit(tree, (node) => {
-        if (!Array.isArray(node.children)) return;
-        for (let i = node.children.length - 1; i >= 0; i--) {
-            const child = node.children[i];
-            if (child.type !== "ldPendingClass") continue;
-            const target = node.children[i + 1] ?? node;
-            target.class = makeClasses([
-                ...(Array.isArray(target.class)
-                    ? target.class
-                    : makeClasses(target.class)),
-                ...child.class,
-            ]);
-            node.children.splice(i, 1);
-        }
-    });
-    // `ldClassWrapper` with a single child is folded into that child.
-    visit(tree, "ldClassWrapper", (node) => {
-        for (const child of node.children ?? []) {
-            child.class = makeClasses([
-                ...(Array.isArray(child.class)
-                    ? child.class
-                    : makeClasses(child.class)),
-                ...node.class,
-            ]);
-        }
-    });
-    return tree;
-}
-
-/* ------------------------------------------------------------------------ */
 /* Footnotes                                                                */
 /* ------------------------------------------------------------------------ */
 
@@ -248,7 +323,6 @@ const BLOCK_CONTAINERS = new Set([
     "listItem",
     "ldTopic",
     "ldContainer",
-    "ldClassWrapper",
     "ldCompound",
     "ldAdmonition",
     "ldCard",
@@ -540,12 +614,15 @@ export function collectModules(tree, extraModules = []) {
 
 /* ------------------------------------------------------------------------ */
 
-export function runTransforms(tree, { frontmatter, substitutions, parseMyst }) {
+export function runTransforms(
+    tree,
+    { frontmatter, substitutions, parseMyst, vfile },
+) {
     liftDirectives(tree);
     extractTitles(tree);
     applyHeadingAttributes(tree);
+    applyBlockAttributes(tree, vfile);
     applySubstitutions(tree, substitutions, parseMyst);
-    applyPendingClasses(tree);
     relocateFootnoteDefinitions(tree);
     markSimpleLists(tree);
     buildSlides(tree, frontmatter);
