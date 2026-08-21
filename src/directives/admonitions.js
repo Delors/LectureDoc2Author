@@ -23,7 +23,7 @@
  * 3. the generic `admonition` directive with a free-form title and no theme.
  */
 
-import { makeClasses, titleNode } from "../util.js";
+import { makeClasses, makeId, titleNode, toText } from "../util.js";
 
 export const STANDARD_ADMONITIONS = [
     "attention",
@@ -98,13 +98,23 @@ const genericAdmonition = {
     options: commonOptions,
     body: { type: "myst", required: true },
     run(data) {
+        /*
+         * docutils derives a class from the title - `.. admonition:: Links`
+         * becomes `<aside class="admonition admonition-links">` - but only
+         * when the author supplied no `:class:` of their own.
+         */
+        const explicit = makeClasses(data.options?.class);
+        const derived =
+            explicit.length === 0 && data.arg
+                ? [`admonition-${makeId(toText({ children: data.arg }))}`]
+                : [];
         const node = {
             type: "ldAdmonition",
             kind: undefined,
             standard: false,
             titled: false,
             generic: true,
-            class: makeClasses(data.options?.class),
+            class: [...explicit, ...derived],
             children: [titleNode(data.arg ?? []), ...(data.body ?? [])],
         };
         if (data.options?.name) node.identifier = data.options.name;

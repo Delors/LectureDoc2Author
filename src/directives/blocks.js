@@ -36,6 +36,121 @@ const container = {
     },
 };
 
+/* --------------------------------------------------------------- epigraph */
+
+/**
+ * docutils' `.. epigraph::` -> `<blockquote class="epigraph">`.
+ *
+ * mystmd has an `epigraph` of its own, but it wraps the quote in a `<div>` and
+ * drops the class LectureDoc2 styles, so the docutils shape is rebuilt here.
+ *
+ * As in docutils, a final paragraph that starts with `--`, `---` or an em dash
+ * becomes the attribution:
+ *
+ *     :::{epigraph}
+ *     Cybersecurity is the practice of protecting systems.
+ *
+ *     -- [Cisco](https://example.org) [Last accessed: July 4th, 2024]
+ *     :::
+ *
+ *     <blockquote class="epigraph">
+ *       <p>Cybersecurity is the practice of protecting systems.</p>
+ *       <p class="attribution">—<a href="https://example.org">Cisco</a> …</p>
+ *     </blockquote>
+ */
+const ATTRIBUTION = /^\s*(?:--?-?|—)\s*/;
+
+const epigraph = {
+    name: "epigraph",
+    doc: "A quotation with an optional attribution (`<blockquote>`).",
+    options: { class: classOption, name: nameOption },
+    body: { type: "myst", required: true },
+    run(data) {
+        const children = [...(data.body ?? [])];
+
+        /*
+         * The marker sits in the first text node of the last paragraph - it
+         * has to be stripped there rather than from the rendered text, because
+         * the rest of the paragraph is usually a link.
+         */
+        const last = children[children.length - 1];
+        if (last?.type === "paragraph") {
+            const first = (last.children ?? [])[0];
+            if (first?.type === "text" && ATTRIBUTION.test(first.value ?? "")) {
+                first.value = first.value.replace(ATTRIBUTION, "");
+                if (first.value === "") last.children.shift();
+                // docutils prints an em dash and no space before the source.
+                last.children.unshift({ type: "text", value: "—" });
+                last.class = makeClasses("attribution");
+            }
+        }
+
+        return [
+            {
+                type: "blockquote",
+                class: ["epigraph", ...makeClasses(data.options?.class)],
+                identifier: data.options?.name,
+                children,
+            },
+        ];
+    },
+};
+
+/* ----------------------------------------------------------------- figure */
+
+/**
+ * docutils' `.. figure::` -> `<figure>` + `<figcaption>`.
+ *
+ * mystmd's own `figure` produces a `<div>` with the caption as a plain
+ * paragraph and puts every class on that div. docutils - and therefore
+ * LectureDoc2's stylesheets - expect
+ *
+ *     <figure class="align-center">
+ *       <img alt="…" class="screenshot" src="…" />
+ *       <figcaption><p>Anzeige im Terminal</p></figcaption>
+ *     </figure>
+ *
+ * with `:align:` (and `:figclass:`) on the figure and `:class:` on the image.
+ */
+const figure = {
+    name: "figure",
+    doc: "An image with a caption (`<figure>`).",
+    arg: { type: String, required: true, doc: "The image url." },
+    options: {
+        alt: { type: String, doc: "Alternative text." },
+        width: { type: String },
+        height: { type: String },
+        align: { type: String, doc: "`left`, `center` or `right`." },
+        class: { ...classOption, doc: "Classes for the image." },
+        figclass: { ...classOption, doc: "Classes for the figure." },
+        name: nameOption,
+    },
+    body: { type: "myst" },
+    run(data) {
+        const options = data.options ?? {};
+        return [
+            {
+                type: "ldFigure",
+                align: options.align,
+                class: makeClasses(options.figclass),
+                identifier: options.name,
+                children: [
+                    {
+                        type: "image",
+                        url: data.arg,
+                        // docutils falls back to the url, never to no alt.
+                        alt: options.alt ?? data.arg,
+                        class: makeClasses(options.class),
+                        width: options.width,
+                        height: options.height,
+                    },
+                    ...(data.body ?? []),
+                ],
+            },
+        ];
+    },
+};
+
 /* ----------------------------------------------------------------- rubric */
 
 /** docutils' `.. rubric:: text` -> `<p class="rubric">text</p>`. */
@@ -247,4 +362,11 @@ const csvTable = {
     },
 };
 
-export const blockDirectives = [container, rubric, code, csvTable];
+export const blockDirectives = [
+    container,
+    epigraph,
+    figure,
+    rubric,
+    code,
+    csvTable,
+];

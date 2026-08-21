@@ -39,7 +39,7 @@ test("csv-table produces a docutils shaped table", () => {
         "```{csv-table}\n:header: Klasse, Eigenschaft\n:widths: 30, 70\n\n$O(1)$, konstant\n```",
     );
     assert.match(html, /<table><colgroup>/);
-    assert.match(html, /<thead><tr><th><p>Klasse<\/p><\/th>/);
+    assert.match(html, /<thead><tr><th class="head"><p>Klasse<\/p><\/th>/);
     assert.match(html, /<tbody><tr><td><p>/);
     // Inline markup inside a cell is parsed.
     assert.match(html, /class="katex"/);
@@ -173,6 +173,25 @@ test("footnotes render docutils style and stay in place", () => {
 
 test("field list bodies are wrapped in a paragraph", () => {
     assert.match(render("Folien\n\n:   inhalt"), /<dd><p>inhalt<\/p><\/dd>/);
+});
+
+test("a field list is `simple` while every body is one paragraph", () => {
+    assert.match(
+        render("A\n\n:   eins\n\nB\n\n:   zwei"),
+        /<dl class="field-list simple">/,
+    );
+    // a second paragraph in one body is enough to make the whole list loose
+    assert.match(
+        render("A\n\n:   eins\n\n    noch was\n\nB\n\n:   zwei"),
+        /<dl class="field-list">/,
+    );
+});
+
+test("an attribute line adds to, and never replaces, `field-list`", () => {
+    assert.match(
+        render("{.incremental-list}\n\nA\n\n:   eins"),
+        /<dl class="incremental-list field-list simple">/,
+    );
 });
 
 /* --------------------------------------------------------- ordered lists */

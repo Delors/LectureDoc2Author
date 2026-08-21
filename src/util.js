@@ -109,3 +109,32 @@ export function toText(node) {
     if (typeof node.value === "string" && !node.children) return node.value;
     return (node.children ?? []).map(toText).join("");
 }
+
+/**
+ * Inline node types - a run of them is what docutils wraps in a single
+ * paragraph. Shared by the renderer and by `markSimpleLists`, which has to
+ * agree with it on how many paragraphs a definition body will produce.
+ */
+export const INLINE_TYPES = new Set([
+    "text",
+    "emphasis",
+    "strong",
+    "inlineCode",
+    "link",
+    "html",
+    "inlineMath",
+    "break",
+    "image",
+    "delete",
+    "underline",
+    "smallcaps",
+    "subscript",
+    "superscript",
+    "abbreviation",
+    "keyboard",
+    "footnoteReference",
+    "ldSpan",
+    "ldInlineCode",
+    "ldSource",
+    "ldKbd",
+]);

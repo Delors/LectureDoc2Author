@@ -56,7 +56,7 @@ const incremental = {
 export function codeRole(name, language) {
     return {
         name,
-        doc: `Inline ${language} code.`,
+        doc: language ? `Inline ${language} code.` : "Inline code.",
         body: { type: String, required: true },
         run(data) {
             return [
@@ -88,7 +88,14 @@ export function classRole(name, classes) {
     };
 }
 
-export const builtinRoles = [rawHtml, incremental];
+/**
+ * docutils' standard `:code:` role - inline code without a language, so
+ * `<code>` with no class and no highlighting. `ld.code-roles` adds the
+ * language carrying variants (`{java}`, `{python}`, …).
+ */
+const plainCode = codeRole("code", undefined);
+
+export const builtinRoles = [rawHtml, incremental, plainCode];
 
 /**
  * Builds the full role list from the configuration.

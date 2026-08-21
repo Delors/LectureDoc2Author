@@ -3,7 +3,7 @@
 import { fileWarn } from "myst-common";
 import { visit } from "unist-util-visit";
 
-import { makeClasses, makeId, toText } from "../util.js";
+import { INLINE_TYPES, makeClasses, makeId, toText } from "../util.js";
 import { encryptAESGCM } from "../crypto.js";
 
 /* ------------------------------------------------------------------------ */
@@ -23,7 +23,18 @@ export function liftDirectives(tree) {
         for (const child of node.children) {
             lift(child);
             if (child.type === "mystDirective" || child.type === "mystRole") {
-                lifted.push(...(child.children ?? []));
+                /*
+                 * A directive builds its result nodes by hand, so they have no
+                 * position. Handing them the directive's own range keeps the
+                 * tree locatable in the source - `relocateFootnoteDefinitions`
+                 * needs it to find the block a footnote was written in.
+                 */
+                for (const node of child.children ?? []) {
+                    if (!node.position && child.position) {
+                        node.position = child.position;
+                    }
+                    lifted.push(node);
+                }
             } else if (child.type === "mystDirectiveError") {
                 const at = child.position?.start?.line
                     ? ` (line ${child.position.start.line})`
@@ -338,6 +349,71 @@ const BLOCK_CONTAINERS = new Set([
     "ldPresenterNote",
 ]);
 
+/**
+ * The source line a node came from - directive results carry no position of
+ * their own, so the first descendant that has one stands in for the node.
+ */
+function sourceLine(node) {
+    if (node?.position?.start?.line) return node.position.start.line;
+    for (const child of node?.children ?? []) {
+        const line = sourceLine(child);
+        if (line !== undefined) return line;
+    }
+    return undefined;
+}
+
+/**
+ * The span of source lines a node covers - its *own* position only.
+ *
+ * Deriving it from the descendants would be wrong: an `include` splices in
+ * nodes that carry line numbers of the *included* file, which would stretch
+ * the enclosing block's range over the whole document.
+ */
+function sourceRange(node) {
+    const from = node?.position?.start?.line;
+    const to = node?.position?.end?.line;
+    return from === undefined ? undefined : [from, to ?? from];
+}
+
+/**
+ * Puts a hoisted definition back into the block it was written in.
+ *
+ * markdown-it moves every definition to the end of the document, but the
+ * nodes keep their source positions, so the container it came from is the
+ * innermost one whose line range still covers it. That is what makes a
+ * footnote written inside a `supplemental` stay in the supplemental instead of
+ * landing on the slide next to its reference.
+ */
+function placeByPosition(tree, definition) {
+    const at = sourceLine(definition.children?.[0]);
+    if (at === undefined) return false;
+
+    // The document itself is the outermost candidate: a definition written
+    // between two slides belongs back between them, not next to its reference.
+    let target = tree;
+    const descend = (node) => {
+        for (const child of node.children ?? []) {
+            if (!BLOCK_CONTAINERS.has(child.type)) continue;
+            const range = sourceRange(child);
+            if (!range || at < range[0] || at > range[1]) continue;
+            target = child;
+            descend(child);
+            return;
+        }
+    };
+    descend(tree);
+
+    // Keep the source order among the container's children.
+    const children = target.children ?? (target.children = []);
+    const index = children.findIndex((child) => {
+        const line = sourceLine(child);
+        return line !== undefined && line > at;
+    });
+    if (index === -1) children.push(definition);
+    else children.splice(index, 0, definition);
+    return true;
+}
+
 export function relocateFootnoteDefinitions(tree) {
     const definitions = (tree.children ?? []).filter(
         (child) => child.type === "footnoteDefinition",
@@ -349,7 +425,9 @@ export function relocateFootnoteDefinitions(tree) {
 
     for (const definition of definitions) {
         const label = definition.label ?? definition.identifier;
-        let placed = false;
+        // The block it was written in wins; the referencing block is the
+        // fallback for definitions that sat at the top level anyway.
+        let placed = placeByPosition(tree, definition);
 
         /** Finds the block that contains the matching reference. */
         const place = (node) => {
@@ -471,19 +549,63 @@ export function markSimpleLists(tree) {
             return true;
         });
 
-    // The class is set on the outermost list of a "simple" subtree only.
-    const walk = (node, suppress) => {
-        for (const child of node.children ?? []) {
-            if (child.type === "list") {
-                const simple = !suppress && isSimple(child);
-                child.simple = simple;
-                walk(child, suppress || simple);
-            } else {
-                walk(child, suppress);
+    /*
+     * A field list is simple when no field body needs more than one paragraph
+     * - docutils then leaves out the vertical spacing between the fields.
+     * Unlike bullet lists, field lists are never nested, so there is nothing
+     * to suppress here.
+     */
+    const isSimpleDefinitionList = (list) =>
+        (list.children ?? []).every((child) => {
+            if (child.type !== "definitionDescription") return true;
+            /*
+             * docutils compacts a field list when no field body holds more
+             * than one element - one paragraph, or one list, which then has to
+             * be simple itself. A run of inline nodes counts as the single
+             * paragraph the renderer wraps it in (see
+             * `definitionDescription`).
+             */
+            let blocks = 0;
+            let inRun = false;
+            for (const c of child.children ?? []) {
+                if (INLINE_TYPES.has(c.type)) {
+                    if (c.type === "text" && (c.value ?? "").trim() === "") {
+                        continue;
+                    }
+                    if (!inRun) {
+                        inRun = true;
+                        blocks += 1;
+                    }
+                } else if (c.type === "paragraph") {
+                    inRun = false;
+                    blocks += 1;
+                } else if (c.type === "list") {
+                    inRun = false;
+                    if (!isSimple(c)) return false;
+                    blocks += 1;
+                } else {
+                    return false;
+                }
+                if (blocks > 1) return false;
             }
+            return true;
+        });
+
+    /*
+     * Every compactable list carries the class, nested ones included - that is
+     * what docutils does (`<ul class="simple">` around an
+     * `<ol class="loweralpha simple">`).
+     */
+    const walk = (node) => {
+        for (const child of node.children ?? []) {
+            if (child.type === "list") child.simple = isSimple(child);
+            else if (child.type === "definitionList") {
+                child.simple = isSimpleDefinitionList(child);
+            }
+            walk(child);
         }
     };
-    walk(tree, false);
+    walk(tree);
     return tree;
 }
 

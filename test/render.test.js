@@ -36,7 +36,8 @@ test("titled admonitions append the title after the label", () => {
 
 test("the generic admonition has no theme", () => {
     const html = render(":::{admonition} Eigener Titel\nfoo\n:::");
-    assert.match(html, /<aside class="admonition">/);
+    // docutils derives a class from the title when none is given.
+    assert.match(html, /<aside class="admonition admonition-eigener-titel">/);
     assert.doesNotMatch(html, /data-theme/);
 });
 
@@ -90,9 +91,9 @@ test("lists follow the docutils 'simple' rules", () => {
     assert.match(render("- a\n- b"), /<ul class="simple">/);
     // two paragraphs in one item -> not simple
     assert.match(render("- a\n\n  b\n- c"), /<ul>/);
-    // nested simple lists are not marked again
+    // docutils marks every compactable list, nested ones included
     const nested = render("- a\n\n  - b\n  - c");
-    assert.equal((nested.match(/class="simple"/g) ?? []).length, 1);
+    assert.equal((nested.match(/class="simple"/g) ?? []).length, 2);
 });
 
 test("decks mark every card but the first as incremental", () => {
@@ -140,7 +141,7 @@ test("definition lists become field lists", () => {
     const html = render("Folien\n\n:   inhalt");
     assert.match(
         html,
-        /<dl class="field-list"><dt>Folien<span class="colon">:<\/span><\/dt>/,
+        /<dl class="field-list simple"><dt>Folien<span class="colon">:<\/span><\/dt>/,
     );
 });
 

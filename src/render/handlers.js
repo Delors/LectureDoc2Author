@@ -14,7 +14,7 @@ import { u } from "unist-builder";
 
 import { all } from "./hast-compat.js";
 
-import { classAttr, escapeHtml, mergeClasses } from "../util.js";
+import { INLINE_TYPES, classAttr, escapeHtml, mergeClasses } from "../util.js";
 import { highlight } from "./highlight.js";
 import { label } from "../i18n.js";
 
@@ -104,39 +104,31 @@ export function buildHandlers(ctx) {
         );
     };
 
+    /*
+     * docutils renders a field list as `<dl class="field-list simple">`, with
+     * any author supplied classes in front. `field-list` is structural and has
+     * to survive an attribute line - `{.incremental-list}` adds to it rather
+     * than replacing it.
+     */
     const definitionList = (h, node) =>
-        h(node, "dl", { class: cls(node.class ?? "field-list") }, all(h, node));
+        h(
+            node,
+            "dl",
+            {
+                class: cls(
+                    node.class,
+                    "field-list",
+                    node.simple ? "simple" : undefined,
+                ),
+            },
+            all(h, node),
+        );
 
     const definitionTerm = (h, node) =>
         h(node, "dt", { class: cls(node.class) }, [
             ...all(h, node),
             h(node, "span", { class: "colon" }, [u("text", ":")]),
         ]);
-
-    /** Inline node types; anything else starts a block. */
-    const INLINE_TYPES = new Set([
-        "text",
-        "emphasis",
-        "strong",
-        "inlineCode",
-        "link",
-        "html",
-        "inlineMath",
-        "break",
-        "image",
-        "delete",
-        "underline",
-        "smallcaps",
-        "subscript",
-        "superscript",
-        "abbreviation",
-        "keyboard",
-        "footnoteReference",
-        "ldSpan",
-        "ldInlineCode",
-        "ldSource",
-        "ldKbd",
-    ]);
 
     /** docutils wraps the body of a field/definition in a paragraph. */
     const definitionDescription = (h, node) => {
@@ -180,7 +172,14 @@ export function buildHandlers(ctx) {
     const code = (h, node) => {
         const language = node.lang ?? node.language;
         const properties = {
-            class: cls("code", language, node.class, "literal-block"),
+            // A plain literal block (a fence with no language) is just
+            // `literal-block` in docutils; `code` comes with the language.
+            class: cls(
+                language ? "code" : undefined,
+                language,
+                node.class,
+                "literal-block",
+            ),
             id: node.identifier,
         };
         const value = node.value ?? "";
@@ -305,6 +304,27 @@ export function buildHandlers(ctx) {
         });
     };
 
+    /** docutils' figure: the image, then the caption in a <figcaption>. */
+    const ldFigure = (h, node) => {
+        const [img, ...caption] = node.children ?? [];
+        const children = img ? all(h, { children: [img] }) : [];
+        if (caption.length > 0) {
+            children.push(h(node, "figcaption", {}, allOf(h, caption)));
+        }
+        return h(
+            node,
+            "figure",
+            {
+                class: cls(
+                    node.class,
+                    node.align ? `align-${node.align}` : undefined,
+                ),
+                id: node.identifier,
+            },
+            children,
+        );
+    };
+
     const heading = (h, node) => {
         // Level-1 headings became slides, everything below is shifted by one so
         // that the slide title stays the only <h2>.
@@ -421,8 +441,15 @@ export function buildHandlers(ctx) {
                 "tr",
                 {},
                 (row.children ?? []).map((cell) =>
-                    // docutils wraps every cell body in a paragraph.
-                    h(cell, cell.header ? "th" : "td", {}, all(h, cell)),
+                    // docutils wraps every cell body in a paragraph and marks
+                    // header cells with `class="head"`, which `table.css`
+                    // styles.
+                    h(
+                        cell,
+                        cell.header ? "th" : "td",
+                        cell.header ? { class: "head" } : {},
+                        all(h, cell),
+                    ),
                 ),
             );
 
@@ -738,9 +765,19 @@ export function buildHandlers(ctx) {
                               node,
                               "p",
                               { class: "ld-exercise-title rubric" },
-                              node.formattedTitle?.length
-                                  ? allOf(h, node.formattedTitle)
-                                  : [u("text", node.title)],
+                              // The inner <span> is what rst2ld emits; the
+                              // themes hang `::before` counters off the <p>,
+                              // so the title needs an element of its own.
+                              [
+                                  h(
+                                      node,
+                                      "span",
+                                      {},
+                                      node.formattedTitle?.length
+                                          ? allOf(h, node.formattedTitle)
+                                          : [u("text", node.title)],
+                                  ),
+                              ],
                           ),
                       ]
                     : []),
@@ -798,6 +835,7 @@ export function buildHandlers(ctx) {
         ldGrid,
         ldCell,
         ldCompound,
+        ldFigure,
         ldModule,
         ldSpan,
         ldKbd,

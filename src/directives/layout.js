@@ -204,7 +204,13 @@ const supplemental = {
         "class": classOption,
         "name": nameOption,
     },
-    body: { type: "myst", required: true },
+    /*
+     * Not `required`: a supplemental whose body is nothing but a footnote
+     * definition parses as empty, because markdown-it hoists definitions out
+     * of the document before the directive ever sees them.
+     * `relocateFootnoteDefinitions` puts them back afterwards.
+     */
+    body: { type: "myst" },
     run(data) {
         if (/\bsupplemental\b/.test(data.arg ?? "")) {
             throw new Error(
