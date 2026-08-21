@@ -523,8 +523,10 @@ async function printDocument(
         log(`Number of slides:  ${sections}`);
 
         // `prepareForPrinting` walks the sections with a 100 ms timer.
+        // However, to ensure that everything is setup, we wait at least 
+        // 1 second.
         const settle =
-            Number(sections) * 100 +
+            Math.max(Number(sections) * 100, 1000) +
             Number.parseInt(options.wait ?? "1500", 10);
         await evaluate(
             client,
