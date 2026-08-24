@@ -9,6 +9,7 @@
     "homepage": "https://github.com/Delors/LectureDoc2Author#readme",
     "author": "Michael Eichberg",
     "license": "BSD-3-Clause",
+    "packageManager": "pnpm@11.23.0",
     "type": "module",
     "main": "./src/index.js",
     "exports": {
@@ -36,8 +37,10 @@
         "katex": "^0.18.1",
         "mdast-util-to-hast": "^13.2.1",
         "myst-common": "^1.10.0",
-        "myst-parser": "^1.7.3",
-        "myst-to-html": "^1.5.15",
+        "myst-directives": "^1.7.3",
+        "myst-parser": "^1.5.17",
+        "myst-roles": "^1.7.3",
+        "myst-to-html": "^1.0.9",
         "prismjs": "^1.30.0",
         "rehype-format": "^5.0.1",
         "rehype-stringify": "^10.0.1",
@@ -47,7 +50,7 @@
         "vfile": "^6.0.3"
     },
     "devDependencies": {
-        "prettier": "^3.6.2"
+        "prettier": "^3.9.6"
     },
     "engines": {
         "node": ">=22"

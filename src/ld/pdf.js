@@ -92,7 +92,6 @@ export async function runPdf(config, jobs, { log = console.log } = {}) {
             concurrency: config.pdf.concurrency,
             format: config.pdf.format,
             margin: config.pdf.margin,
-            wait: String(config.pdf.wait),
             timeout: String(config.pdf.timeout),
             log,
         },

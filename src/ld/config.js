@@ -56,7 +56,6 @@ const DEFAULTS = {
         concurrency: 2,
         format: "A4",
         margin: "10mm",
-        wait: 1500,
         timeout: 120000,
     },
 };

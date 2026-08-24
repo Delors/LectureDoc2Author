@@ -14,6 +14,7 @@
  *   pdf       HTML -> PDF, on demand
  *   publish   copy what the .publish files name to the target
  *   status    what all of the above would do
+ *   clean     remove what build and pdf generated
  *
  * `build` and `serve` work on loose files with no project configuration around
  * them - the standalone converter use case. The rest need an `ld.config.json`,
@@ -39,6 +40,7 @@ import {
     runPdf,
     stalePublishedPdfs,
 } from "./ld/pdf.js";
+import { planClean, runClean } from "./ld/clean.js";
 import { applyPlan, planIsEmpty, planPublish } from "./ld/publish.js";
 import { watch } from "./ld/watch.js";
 import { relPosix } from "./ld/fsutil.js";
@@ -53,6 +55,8 @@ Commands:
                      Never runs automatically; this is the on-demand step.
   publish            Copy everything the .publish files name to the target.
   status             Show what build, pdf and publish would do. Changes nothing.
+  clean [file...]    Remove the generated HTML, PDFs, password files and the
+                     vendored KaTeX assets. Never touches the target folder.
 
 Options:
       --config <f>     ld.config.json (default: nearest one, upwards).
@@ -72,8 +76,9 @@ Options:
       --no-live-reload serve: do not inject the live reload script.
   -h, --help           Show this message.
 
-LectureDoc2 loads its JavaScript as an ES module and uses crypto.subtle, so the
-slides have to be served over HTTP - opening them via file:// does not work.
+LectureDoc2 loads its JavaScript as an ES module and uses crypto.subtle, therefore 
+opening them via file:// does not work. The files have to be served by webserver
+which provides a secure context (https or http to the localhost).
 `;
 
 /* ------------------------------------------------------------------ helpers */
@@ -325,6 +330,36 @@ async function cmdPublish(config, options) {
     return problems > 0 ? 1 : 0;
 }
 
+/**
+ * Removes the build products. Named documents limit it to those; without them
+ * every source in the project is cleaned.
+ */
+async function cmdClean(config, files, options) {
+    const only = files.length
+        ? files.map((f) => relPosix(config.root, path.resolve(f)))
+        : null;
+    const plan = planClean(config, { only });
+    const count = plan.files.length + plan.dirs.length;
+
+    if (count === 0) {
+        console.log("nothing to clean");
+        return 0;
+    }
+    if (options["dry-run"]) {
+        console.log(`${count} path(s) would be removed:`);
+        for (const file of plan.files) {
+            console.log(`  ${relPosix(config.root, file)}`);
+        }
+        for (const dir of plan.dirs) {
+            console.log(`  ${relPosix(config.root, dir)}/`);
+        }
+        return 0;
+    }
+    console.log(`removing ${count} path(s):`);
+    await runClean(config, plan);
+    return 0;
+}
+
 async function cmdStatus(config) {
     const { stale } = planBuild(config, {});
     console.log(
@@ -399,7 +434,13 @@ async function cmdWatch(config) {
 /* --------------------------------------------------------------------- main */
 
 /** Commands that cannot work without knowing where the target folder is. */
-const NEEDS_CONFIG = new Set(["watch", "pdf", "publish", "status"]);
+const NEEDS_CONFIG = new Set([
+    "watch",
+    "pdf",
+    "publish",
+    "status",
+    "clean",
+]);
 
 async function main() {
     const { values, positionals } = parseArgs({
@@ -434,7 +475,15 @@ async function main() {
         throw new Error("--out can only be used with a single input file");
     }
 
-    const known = ["build", "serve", "watch", "pdf", "publish", "status"];
+    const known = [
+        "build",
+        "serve",
+        "watch",
+        "pdf",
+        "publish",
+        "status",
+        "clean",
+    ];
     if (!known.includes(command)) {
         console.error(`unknown command: ${command}\n`);
         process.stdout.write(USAGE);
@@ -458,6 +507,8 @@ async function main() {
             return cmdPublish(config, values);
         case "status":
             return cmdStatus(config);
+        case "clean":
+            return cmdClean(config, files, values);
     }
 }
 

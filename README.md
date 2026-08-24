@@ -14,10 +14,17 @@ ld2 watch      # build and publish on change; never renders PDFs
 ld2 pdf        # HTML -> PDF via headless Chrome, on demand
 ld2 publish    # copy what the .publish files name to the target folder
 ld2 status     # what all of the above would do; changes nothing
+ld2 clean      # remove what build and pdf generated
 ```
 
-`build` and `serve` work on loose files. `pdf`, `publish`, `watch` and `status`
-need an `ld.config.json` — see [docs-publishing.md](docs-publishing.md).
+`build` and `serve` work on loose files. `pdf`, `publish`, `watch`, `status` and
+`clean` need an `ld.config.json` — see [docs-publishing.md](docs-publishing.md).
+
+`clean` derives what to delete from the sources — `<deck>.md.html`, its PDF and
+the two password files, plus the vendored KaTeX directory — so a generated file
+whose `.md` was renamed away is left alone rather than guessed about. It never
+touches the target folder (`publish --prune` owns that), the publish manifest,
+the secrets or a submodule's `dist/`. `ld2 clean -n` lists what would go.
 
 ## The converter
 
@@ -40,38 +47,43 @@ and supports the same set of directives — with one deliberate difference:
 ## Install
 
 ```sh
-npm install --save-dev lecturedoc2-author
+pnpm add -D lecturedoc2-author
 ```
 
-That puts `ld2` in `node_modules/.bin`, so `npx ld2 …` works and it is on the
-`PATH` of every npm script. Nothing has to be linked globally.
+That puts `ld2` in `node_modules/.bin`, so `pnpm exec ld2 …` works and it is on
+the `PATH` of every script. Nothing has to be linked globally.
 
-Inside a project that consumes this package as a **git submodule**, declare it
-as an npm workspace instead — one `npm install` at the project root then links
-it into `node_modules/` as a symlink, so `ld2` and `import
-"lecturedoc2-author"` both work while the submodule stays live-editable.
-Workspaces resolve by *package name*, so the directory may be called anything:
+Inside a project that consumes this package as a **git submodule**, make it a
+workspace project instead — one `pnpm install` at the project root then links it
+into `node_modules/` as a symlink, so `ld2` and `import "lecturedoc2-author"`
+both work while the submodule stays live-editable. Workspaces resolve by
+*package name*, so the directory may be called anything:
 
-```json
-"workspaces": ["LectureDoc2Author"]
+```yaml
+# pnpm-workspace.yaml
+packages:
+    - LectureDoc2Author
 ```
+
+The consuming project also has to depend on it — `"lecturedoc2-author":
+"workspace:*"` — otherwise pnpm links nothing and `ld2` is not on the `PATH`.
 
 Only for hacking on this package standalone:
 
 ```sh
-npm install         # inside LectureDoc2Author/
-node src/cli.js …   # or `npm link` to get a global `ld2`
+pnpm install        # inside LectureDoc2Author/
+node src/cli.js …   # or `pnpm link --global` to get a global `ld2`
 ```
 
 ## Use
 
 ```sh
-npx ld2 build slides/folien.de.md              # -> slides/folien.de.md.html
-npx ld2 build --out-dir build slides/*.md
-npx ld2 build --pretty slides/folien.de.md     # pretty-print the HTML
-npx ld2 serve slides/folien.de.md              # build + serve + watch + live reload
-npx ld2 serve --port 8080 slides/*.md
-npx ld2 serve --no-live-reload slides/*.md
+pnpm exec ld2 build slides/folien.de.md              # -> slides/folien.de.md.html
+pnpm exec ld2 build --out-dir build slides/*.md
+pnpm exec ld2 build --pretty slides/folien.de.md     # pretty-print the HTML
+pnpm exec ld2 serve slides/folien.de.md              # build + serve + watch + live reload
+pnpm exec ld2 serve --port 8080 slides/*.md
+pnpm exec ld2 serve --no-live-reload slides/*.md
 ```
 
 `ld2 serve` serves the **project root**, not the deck's folder: a generated deck
@@ -437,8 +449,8 @@ document.
 ## Development
 
 ```sh
-npm test         # node:test based unit tests
-npm run fmt      # prettier
+pnpm test        # node:test based unit tests
+pnpm fmt         # prettier
 ```
 
 ## License

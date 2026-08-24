@@ -16,10 +16,10 @@ Configuration is `ld.config.json` at the repository root — one `target`, one
 ## A typical day
 
 ```sh
-npm run watch                 # while writing
-npm run pdf                   # when a deck is ready
-npm run publish -- --prune -n # review
-npm run publish -- --prune    # ship
+ld2 watch                   # while writing
+ld2 pdf                     # when a deck is ready
+ld2 publish --prune -n      # review
+ld2 publish --prune         # ship
 ```
 
 ## The three things that changed

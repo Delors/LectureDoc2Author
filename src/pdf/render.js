@@ -58,7 +58,6 @@ Options:
       --margin <css>     Page margin, one to four values ("top right bottom left")
                          (default: 10mm). Units: mm, cm, in, pt, px.
       --scale <n>        Render scale, 0.1 - 2 (default: 1).
-      --wait <ms>        Extra settle time before printing (default: 1500).
       --timeout <ms>     Overall timeout (default: 120000).
       --verbose          Also print browser console messages.
   -h, --help             Show this message.
@@ -487,60 +486,50 @@ async function printDocument(
         await client.send("Page.navigate", { url }, sessionId);
         await withTimeout(loaded, timeout, "the document did not load");
 
-        // LectureDoc2 sets up asynchronously after `load`.
-        await evaluate(
-            client,
-            sessionId,
-            `new Promise((resolve) => {
-                 const ready = () =>
-                     window.lectureDoc2 && window.lectureDoc2.prepareForPrinting;
-                 if (ready()) return resolve(true);
-                 const started = Date.now();
-                 const timer = setInterval(() => {
-                     if (ready() || Date.now() - started > 15000) {
-                         clearInterval(timer);
-                         resolve(ready());
+        // `window.lectureDoc2` is assigned while `ld.js` is evaluated, and a
+        // module script runs before `DOMContentLoaded` - so by the time the
+        // load event has fired the object is there. If it is not, this is not
+        // a LectureDoc2 document, and no amount of waiting would change that.
+        //
+        // `prepareForPrinting()` is asynchronous: it resolves only after
+        // LectureDoc2 has finished its own initialization *and* has walked
+        // every section of the document view, so that lazily laid out content
+        // (deck based layouts, stories, ...) has been rendered. Awaiting it is
+        // therefore the complete synchronization point - there is nothing left
+        // to guess a settle time for. It returns the section count; it rejects
+        // when the initialization failed.
+        const sections = await withTimeout(
+            evaluate(
+                client,
+                sessionId,
+                `(() => {
+                     const ld = window.lectureDoc2;
+                     if (!ld || typeof ld.prepareForPrinting !== "function") {
+                         throw new Error(
+                             "window.lectureDoc2.prepareForPrinting() is " +
+                                 "missing - is this a LectureDoc2 document?",
+                         );
                      }
-                 }, 50);
-             })`,
-            { awaitPromise: true },
-        ).then((ok) => {
-            if (!ok) {
-                throw new Error(
-                    "lectureDoc2.prepareForPrinting() is not available - " +
-                        "is this a LectureDoc2 document?",
-                );
-            }
-        });
-
-        // Switches to the document view and scrolls every section into view so
-        // that lazily laid out content is rendered; returns the section count.
-        const sections = await evaluate(
-            client,
-            sessionId,
-            "window.lectureDoc2.prepareForPrinting()",
+                     return ld.prepareForPrinting();
+                 })()`,
+                { awaitPromise: true },
+            ),
+            timeout,
+            "the document was not prepared for printing",
         );
-        log(`Number of slides:  ${sections}`);
+        log(`${relative} - Number of slides:  ${sections}`);
 
-        // `prepareForPrinting` walks the sections with a 100 ms timer.
-        // However, to ensure that everything is setup, we wait at least 
-        // 1 second.
-        const settle =
-            Math.max(Number(sections) * 100, 1000) +
-            Number.parseInt(options.wait ?? "1500", 10);
-        await evaluate(
-            client,
-            sessionId,
-            `new Promise((r) => setTimeout(r, ${settle}))`,
-            { awaitPromise: true },
-        );
-        await evaluate(
-            client,
-            sessionId,
-            "document.fonts.ready.then(() => true)",
-            {
-                awaitPromise: true,
-            },
+        // Fonts are loaded independently of LectureDoc2's own setup; printing
+        // before they are ready would lay the text out with the fallback font.
+        await withTimeout(
+            evaluate(
+                client,
+                sessionId,
+                "document.fonts.ready.then(() => true)",
+                { awaitPromise: true },
+            ),
+            timeout,
+            "the fonts were not loaded",
         );
 
         const { data } = await client.send(
@@ -746,7 +735,6 @@ async function main() {
             landscape: { type: "boolean", default: false },
             margin: { type: "string" },
             scale: { type: "string" },
-            wait: { type: "string" },
             timeout: { type: "string" },
             verbose: { type: "boolean", default: false },
             help: { type: "boolean", short: "h", default: false },
