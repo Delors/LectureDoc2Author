@@ -362,6 +362,17 @@ function sourceLine(node) {
     return undefined;
 }
 
+/** The last source line a node covers - the deepest descendant that has one. */
+function sourceEndLine(node) {
+    if (node?.position?.end?.line) return node.position.end.line;
+    const children = node?.children ?? [];
+    for (let i = children.length - 1; i >= 0; i--) {
+        const line = sourceEndLine(children[i]);
+        if (line !== undefined) return line;
+    }
+    return undefined;
+}
+
 /**
  * The span of source lines a node covers - its *own* position only.
  *
@@ -373,6 +384,28 @@ function sourceRange(node) {
     const from = node?.position?.start?.line;
     const to = node?.position?.end?.line;
     return from === undefined ? undefined : [from, to ?? from];
+}
+
+/**
+ * Re-anchors a hoisted definition to the position of its own content.
+ *
+ * markdown-it does not carry a footnote definition's position along when it
+ * moves the node to the end of the document: what stays behind on the node is
+ * the range of a *different* definition (the labels end up rotated by one).
+ * The definition's children do keep their real position, so it is copied onto
+ * the node itself before anything reads it - `placeByPosition` compares each
+ * definition against the ones already put back, and a bogus line there makes
+ * every later definition land in front of an earlier one, i.e. on the first
+ * slide that has a footnote at all.
+ */
+function anchorToContent(definition) {
+    const start = sourceLine(definition.children?.[0]);
+    if (start === undefined) return;
+    const end = sourceEndLine(definition) ?? start;
+    definition.position = {
+        start: { line: start, column: 1 },
+        end: { line: Math.max(end, start), column: 1 },
+    };
 }
 
 /**
@@ -422,6 +455,7 @@ export function relocateFootnoteDefinitions(tree) {
     tree.children = tree.children.filter(
         (child) => child.type !== "footnoteDefinition",
     );
+    for (const definition of definitions) anchorToContent(definition);
 
     for (const definition of definitions) {
         const label = definition.label ?? definition.identifier;

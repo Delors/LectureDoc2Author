@@ -45,6 +45,31 @@ test("csv-table produces a docutils shaped table", () => {
     assert.match(html, /class="katex"/);
 });
 
+test("a Markdown pipe table is rendered like a csv-table", () => {
+    const html = render(
+        "{.incremental-table-rows}\n\n" +
+            "| Verzeichnis | Bedeutung |\n" +
+            "|---|---|\n" +
+            "| `/` | Wurzel |\n" +
+            "|  |  |\n" +
+            "| `~` | Home |\n",
+    );
+    // The attribute line must survive - mystmd's own table handler drops it.
+    assert.match(html, /<table class="incremental-table-rows">/);
+    assert.match(html, /<thead><tr><th class="head"><p>Verzeichnis<\/p><\/th>/);
+    assert.match(html, /<tbody><tr><td><p><span class="docutils literal">\/</);
+    // The spacer row an reST grid table writes as a double rule.
+    assert.match(html, /<tr><td><\/td><td><\/td><\/tr>/);
+    // No column alignment given, so no stray `text-align`.
+    assert.doesNotMatch(html, /text-align/);
+});
+
+test("pipe table column alignment becomes text-align", () => {
+    const html = render("| A | B |\n|:--|--:|\n| 1 | 2 |\n");
+    assert.match(html, /<th class="head" style="text-align: left;">/);
+    assert.match(html, /<td style="text-align: right;"><p>2<\/p><\/td>/);
+});
+
 test("`:width:` becomes an inline style, unitless values are px", () => {
     // docutils' `length_or_percentage_or_unitless`.
     assert.equal(lengthOrPercentage("100"), "100px");
@@ -167,6 +192,28 @@ test("footnotes render docutils style and stay in place", () => {
     assert.match(slideA, /<span class="fn-bracket">\[<\/span>/);
     // mystmd would otherwise collect them into a <section> at the very end.
     assert.doesNotMatch(html, /data-footnotes/);
+});
+
+test("every footnote definition stays on the slide that references it", () => {
+    // markdown-it hoists all definitions to the end of the document and does
+    // not carry their position along; without re-anchoring them they pile up
+    // on the first slide that has a footnote.
+    const html = render(
+        "# Folie A\n\nA[^a].\n\n[^a]: Fussnote A.\n\n" +
+            "# Folie B\n\nB[^b].\n\n[^b]: Fussnote B.\n\n" +
+            "# Folie C\n\nC[^c].\n\n[^c]: Fussnote C.",
+    );
+    const slide = (id) => {
+        const from = html.indexOf(`id="${id}"`);
+        const next = html.indexOf("<ld-topic", from);
+        return html.slice(from, next === -1 ? undefined : next);
+    };
+    assert.match(slide("folie-a"), /id="footnote-a"/);
+    assert.doesNotMatch(slide("folie-a"), /id="footnote-(b|c)"/);
+    assert.match(slide("folie-b"), /id="footnote-b"/);
+    assert.doesNotMatch(slide("folie-b"), /id="footnote-(a|c)"/);
+    assert.match(slide("folie-c"), /id="footnote-c"/);
+    assert.doesNotMatch(slide("folie-c"), /id="footnote-(a|b)"/);
 });
 
 /* ----------------------------------------------------- definition list */

@@ -427,7 +427,19 @@ export function buildHandlers(ctx) {
             all(h, node),
         );
 
-    /** docutils tables: `<table><thead>…</thead><tbody>…</tbody></table>`. */
+    /**
+     * docutils tables: `<table><thead>…</thead><tbody>…</tbody></table>`.
+     *
+     * Registered for `ldTable` (what `csv-table` builds) *and* for the plain
+     * `table` of a Markdown pipe table - the two node shapes are identical, and
+     * without this a pipe table falls through to mystmd's own handler, which
+     * knows nothing about `node.class` (an attribute line such as
+     * `{.incremental-table-rows}` would be silently dropped) nor about the
+     * docutils markup LectureDoc2's stylesheets are written for.
+     *
+     * A pipe table carries its column alignment per *cell* (`:---`, `---:`);
+     * docutils has no equivalent, so it becomes an inline `text-align`.
+     */
     const ldTable = (h, node) => {
         const rows = node.children ?? [];
         const headerRows = rows.filter((r) =>
@@ -435,22 +447,33 @@ export function buildHandlers(ctx) {
         );
         const bodyRows = rows.filter((r) => !headerRows.includes(r));
 
+        const renderCell = (cell) => {
+            const children = cell.children ?? [];
+            // docutils wraps every cell body in a paragraph; the cells of a
+            // pipe table hold inline content only, so it is added here.
+            const inline =
+                children.length > 0 &&
+                children.every((c) => INLINE_TYPES.has(c.type));
+            return h(
+                cell,
+                cell.header ? "th" : "td",
+                {
+                    // docutils marks header cells with `class="head"`.
+                    class: cls(cell.class, cell.header ? "head" : undefined),
+                    style: cell.align
+                        ? `text-align: ${cell.align};`
+                        : undefined,
+                },
+                inline ? [h(cell, "p", {}, all(h, cell))] : all(h, cell),
+            );
+        };
+
         const renderRow = (row) =>
             h(
                 row,
                 "tr",
-                {},
-                (row.children ?? []).map((cell) =>
-                    // docutils wraps every cell body in a paragraph and marks
-                    // header cells with `class="head"`, which `table.css`
-                    // styles.
-                    h(
-                        cell,
-                        cell.header ? "th" : "td",
-                        cell.header ? { class: "head" } : {},
-                        all(h, cell),
-                    ),
-                ),
+                { class: cls(row.class) },
+                (row.children ?? []).map(renderCell),
             );
 
         const children = [];
@@ -482,7 +505,9 @@ export function buildHandlers(ctx) {
             {
                 class: cls(
                     node.class,
-                    node.align ? `align-${node.align}` : undefined,
+                    typeof node.align === "string"
+                        ? `align-${node.align}`
+                        : undefined,
                 ),
                 id: node.identifier,
                 // docutils' `:width:` becomes an inline style on the table.
@@ -811,6 +836,8 @@ export function buildHandlers(ctx) {
         ldContainer,
         ldRubric,
         ldTable,
+        // a Markdown pipe table is rendered exactly like a `csv-table`
+        table: ldTable,
         ldInlineCode,
         listItem,
         definitionList,
