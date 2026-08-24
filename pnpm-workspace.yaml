@@ -1,0 +1,12 @@
+# LectureDoc2Author's own pnpm settings.
+#
+# The package is developed and released on its own, so `pnpm install` inside
+# this folder has to install *this* project - with its own lockfile and its own
+# node_modules - rather than the workspace that happens to contain it. pnpm
+# looks for the nearest `pnpm-workspace.yaml`, so this file is what makes the
+# folder a workspace of one; `.` is that member.
+#
+# Nothing else belongs here: no dependency of this package runs an install
+# script, so there is no `allowBuilds` entry to make.
+packages:
+  - .
