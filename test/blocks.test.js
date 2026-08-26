@@ -137,14 +137,14 @@ test("code blocks use the docutils line-number markup", () => {
     );
     assert.match(
         html,
-        /<small class="ln"> 1 <\/small><code data-lineno=" 1 ">/,
+        /<small class="ln">1<\/small><code data-lineno="1">/,
     );
     assert.doesNotMatch(html, /<pre[^>]*><code>/);
 });
 
 test("number-lines may start at a given number", () => {
     const html = render("```{code-block} text\n:number-lines: 7\n\nx\n```");
-    assert.match(html, /<small class="ln"> 7 <\/small>/);
+    assert.match(html, /<small class="ln">7<\/small>/);
 });
 
 test("syntax highlighting uses Pygments class names", () => {

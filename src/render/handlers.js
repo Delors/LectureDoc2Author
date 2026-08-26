@@ -197,7 +197,7 @@ export function buildHandlers(ctx) {
                 String(start + lines.length - 1).length,
             );
             lines.forEach((line, i) => {
-                const number = ` ${String(start + i).padStart(digits, " ")} `;
+                const number = `${String(start + i).padStart(digits, " ")}`;
                 const hot = emphasized.has(i + 1);
                 children.push(
                     h(
