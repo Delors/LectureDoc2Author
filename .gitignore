@@ -8,3 +8,7 @@ Icon?
 *.md.html*
 *.passwords.json
 *.passwords.json.md
+
+# KaTeX, vendored next to the example deck when it is built as part of a
+# surrounding project (see `vendorKatex`). Generated, never edited.
+shared/ext/

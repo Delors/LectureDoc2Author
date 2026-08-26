@@ -8,6 +8,9 @@
 import path from "node:path";
 
 import { convertFile, outputNameFor } from "../build.js";
+import { attributeError } from "../context.js";
+import { strictFailure } from "../diagnostics.js";
+import { reportDiagnostic, reportError } from "../report.js";
 
 import { matchesAny } from "./glob.js";
 import { exists, mtimeOrZero, walk } from "./fsutil.js";
@@ -50,8 +53,19 @@ export function planBuild(config, { force = false, only = null } = {}) {
     };
 }
 
-/** Builds the given documents. Returns the results, failures included. */
-export async function runBuild(config, documents, { log = console.log } = {}) {
+/**
+ * Builds the given documents. Returns the results, failures included.
+ *
+ * A failure never stops the run: with thirteen decks in a project, finding out
+ * about the second problem only after fixing the first is its own kind of
+ * error message. Reporting goes through `report.js` so that `build`, `serve`
+ * and `watch` say the same thing in the same shape.
+ */
+export async function runBuild(
+    config,
+    documents,
+    { log = console.log, debug = false, strict = true } = {},
+) {
     const results = [];
     for (const document of documents) {
         const started = Date.now();
@@ -61,16 +75,22 @@ export async function runBuild(config, documents, { log = console.log } = {}) {
                 `  ${path.relative(config.root, result.outPath)} ` +
                     `(${Date.now() - started} ms)`,
             );
-            for (const warning of result.warnings ?? []) {
-                console.warn(`    math: ${warning.message} in "${warning.tex}"`);
+            for (const diagnostic of result.diagnostics ?? []) {
+                reportDiagnostic(diagnostic, {
+                    root: config.root,
+                    prefix: "    ",
+                });
             }
-            for (const message of result.messages ?? []) {
-                const at = message.line ? `:${message.line}` : "";
-                console.warn(`    ${document.rel}${at}: ${message.reason}`);
+            if (strict && !result.ok) {
+                const error = strictFailure(document.src, result.diagnostics);
+                reportError(error, { root: config.root, debug });
+                results.push({ ...document, result, error });
+            } else {
+                results.push({ ...document, result });
             }
-            results.push({ ...document, result });
-        } catch (error) {
-            console.error(`  [error] ${document.rel}: ${error.message}`);
+        } catch (cause) {
+            const error = attributeError(cause, { file: document.src });
+            reportError(error, { root: config.root, debug });
             results.push({ ...document, error });
         }
     }

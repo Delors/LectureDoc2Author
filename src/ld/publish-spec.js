@@ -29,6 +29,7 @@ import path from "node:path";
 
 import { dirPatterns, isGlob, matchesAny } from "./glob.js";
 import { relPosix, toPosix, walk } from "./fsutil.js";
+import { DirectiveError } from "../context.js";
 
 export const PUBLISH_FILE = ".publish";
 
@@ -39,7 +40,7 @@ export const PUBLISH_FILE = ".publish";
  * three additions that are backwards compatible with every existing file:
  * `#` comments, glob patterns, and `!` negations.
  */
-export function parsePublishFile(text) {
+export function parsePublishFile(text, { file } = {}) {
     const patterns = [];
     const lines = text.split(/\r?\n/);
     for (let i = 0; i < lines.length; i++) {
@@ -52,9 +53,17 @@ export function parsePublishFile(text) {
         );
         if (value === "") continue;
         if (value.startsWith("/") || value.split("/").includes("..")) {
-            throw new Error(
-                `line ${i + 1}: "${line}" must be a relative path inside the ` +
-                    "deck folder",
+            /*
+             * `line 7:` on its own is unusable in a project with a dozen
+             * `.publish` files, which is what this used to say.
+             */
+            throw new DirectiveError(
+                `"${line}" must be a relative path inside the deck folder`,
+                {
+                    file,
+                    line: i + 1,
+                    hint: "A leading `/` or a `..` segment would publish from outside the folder this file governs.",
+                },
             );
         }
         patterns.push({ value, negated, glob: isGlob(value), line: i + 1 });
@@ -126,9 +135,10 @@ export function heldReason(scopeDir, rel) {
  */
 export function resolveScope(root, scope, { ignore = [] } = {}) {
     const scopeDir = scope === "." ? root : path.join(root, scope);
-    const patterns = parsePublishFile(
-        fs.readFileSync(path.join(scopeDir, PUBLISH_FILE), "utf-8"),
-    );
+    const publishFile = path.join(scopeDir, PUBLISH_FILE);
+    const patterns = parsePublishFile(fs.readFileSync(publishFile, "utf-8"), {
+        file: publishFile,
+    });
 
     const present = new Map();
     const held = new Map();

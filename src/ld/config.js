@@ -80,10 +80,11 @@ export function findConfig(start = process.cwd()) {
  * start, and silently creating it would then publish a whole site into the
  * wrong place.
  */
-export function loadConfig(explicitPath, { required = true } = {}) {
-    const configPath = explicitPath
-        ? path.resolve(explicitPath)
-        : findConfig();
+export function loadConfig(
+    explicitPath,
+    { required = true, needsTarget = true } = {},
+) {
+    const configPath = explicitPath ? path.resolve(explicitPath) : findConfig();
     if (!configPath) {
         /*
          * `ld2 build` and `ld2 serve` work on loose files with no project
@@ -115,10 +116,16 @@ export function loadConfig(explicitPath, { required = true } = {}) {
     if (config.target === root) {
         throw new Error("the target must not be the project root");
     }
-    if (!fs.existsSync(config.target)) {
+    /*
+     * Only for the commands that publish. `ld2 build` failing with "the target
+     * does not exist" is a true statement about something the command was
+     * never going to touch - and on a machine where the site checkout is not
+     * mounted it made building impossible for no reason.
+     */
+    if (needsTarget && !fs.existsSync(config.target)) {
         throw new Error(
             `the target does not exist: ${config.target}\n` +
-                "(create it yourself - refusing to guess)",
+                `(configured in ${configPath}; create it yourself - refusing to guess)`,
         );
     }
     return config;

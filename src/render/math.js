@@ -113,7 +113,9 @@ export function renderMathEagerly(tree, options = {}) {
         try {
             html = renderTex(tex, displayMode, options);
         } catch (error) {
-            warnings.push({ tex, message: error.message });
+            // The node travels with the warning so that the report can say
+            // *where* the broken formula is; KaTeX only knows the string.
+            warnings.push({ tex, message: error.message, node });
             html = `<span class="math-error" title="${error.message}">${tex}</span>`;
         }
         return html;

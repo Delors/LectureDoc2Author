@@ -101,6 +101,49 @@ reStructuredTextToLectureDoc2 uses (`folien.de.rst.html`). Derived files are
 therefore recognizable at a glance and a single `*.md.html` line in
 `.gitignore` covers all of them. Use `--out` to choose a different name.
 
+### When something is wrong
+
+Every problem is reported as `file:line:column: directive: message`, with the
+path relative to the project root — the file being the one the mistake is
+written in, which with `{include}` is not necessarily the deck being built:
+
+```
+building 13 document(s):
+  DHBW_W3WI-110.1-Web-Programmierung/folien.de.md.html (64 ms)
+  [error] shared/snippets/intro.de.md:12:1: include-svg: :width: is required
+          They give the SVG its box on the slide, e.g. `:width: 1600` and `:height: 900`.
+          Use `:global:` instead if the file only holds definitions to be referenced elsewhere.
+          included from web-html/folien.de.md:30
+  cv/folien.de.md.html (16 ms)
+  …
+
+1 of 13 documents failed:
+  web-html/folien.de.md
+```
+
+A failing document never stops the others, and `ld2 serve` starts the server
+regardless — a mistake in the deck you are *not* working on should not keep you
+from looking at the one you are. The exit code is 1 if anything failed.
+
+`[warn]` is something that was ignored (an option that does not exist, a
+formula KaTeX could not render); `[error]` means the generated HTML is missing
+something. Both are positioned, and mystmd's two most common findings — an
+unknown directive, an unexpected option — come with a suggestion:
+
+```
+    [error] deck.md:7:1: unknown directive: sourec
+            Did you mean `source`?
+```
+
+| Flag | Meaning |
+| --- | --- |
+| `--no-strict` | write the output even when a document has errors |
+| `--debug` | print stack traces (also `LD2_DEBUG=1`) |
+
+An `internal error:` in a report is a bug in `ld2` rather than a mistake in the
+document; it still names the document that triggered it, and `--debug` gets the
+stack trace.
+
 ### The development server
 
 LectureDoc2 loads `ld.js` as an ES module and uses `crypto.subtle`, so the
@@ -117,6 +160,9 @@ shared assets relative to it.
 | `--host <host>` | bind address (default `127.0.0.1`) |
 | `--no-live-reload` | do not inject the reload script |
 | `--no-open` | do not print the deck URLs |
+
+A deck that fails to build is reported and skipped; the server still comes up
+and the watcher picks it up as soon as it is fixed.
 
 If the port is taken, the next free one (up to +20) is used. Responses carry
 `Cache-Control: no-store`. The server can also be used stand-alone:

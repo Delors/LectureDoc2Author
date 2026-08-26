@@ -51,7 +51,7 @@ test("solutions are encrypted and can be decrypted again", async () => {
 test("a solution without an exercise is rejected", async () => {
     await assert.rejects(
         () => build(":::{solution}\n:pwd: abc\n\nx\n:::"),
-        /solutions must be nested/,
+        /this solution is not inside an exercise/,
     );
 });
 

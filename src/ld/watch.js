@@ -18,6 +18,8 @@
 import fs from "node:fs";
 import path from "node:path";
 
+import { reportError } from "../report.js";
+
 import { matchesAny } from "./glob.js";
 import { relPosix } from "./fsutil.js";
 
@@ -77,7 +79,12 @@ export function watch(
         try {
             await onChange(paths);
         } catch (error) {
-            console.error(error?.stack ?? String(error));
+            /*
+             * A pass that throws must not take the watcher down with it - the
+             * next save is very likely the fix. A stack trace here was pure
+             * noise: the interesting line is which document and where.
+             */
+            reportError(error, { root, prefix: "  [error] " });
         } finally {
             running = false;
             if (again) {

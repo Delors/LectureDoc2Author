@@ -6,10 +6,15 @@ import fs from "node:fs";
 import path from "node:path";
 
 import {
+    currentFrontmatterOffset,
     currentGlobals,
+    currentIncludeStack,
+    currentParseNested,
     currentRoot,
     currentSource,
     directiveError,
+    markOrigin,
+    withIncludedSource,
 } from "../context.js";
 import {
     generatePassword,
@@ -85,7 +90,13 @@ const solution = {
     run(data) {
         const pwd = data.options?.pwd;
         if (pwd !== undefined && pwd.length < 3) {
-            throw new Error('solution password too short: ":pwd: <password>"');
+            throw directiveError(
+                data,
+                `:pwd: is too short (${pwd.length} characters); use at least 3`,
+                {
+                    hint: "Or leave `:pwd:` out entirely and a password is generated for you.",
+                },
+            );
         }
         return [
             {
@@ -164,8 +175,12 @@ const includeSvg = {
         try {
             svg = fs.readFileSync(svgPath, "utf-8");
         } catch (error) {
-            throw new Error(
-                `could not read SVG file ${svgPath}: ${error.message}`,
+            throw directiveError(
+                data,
+                `cannot read the SVG "${data.arg}": ${error.code ?? error.message}`,
+                {
+                    hint: `Resolved to ${svgPath}, relative to this document.`,
+                },
             );
         }
 
@@ -178,20 +193,45 @@ const includeSvg = {
                 "class",
             ].filter((o) => data.options?.[o] !== undefined);
             if (forbidden.length > 0) {
-                throw new Error(
-                    `the :global: option cannot be combined with ${forbidden
+                throw directiveError(
+                    data,
+                    `:global: cannot be combined with ${forbidden
                         .map((o) => `:${o}:`)
-                        .join(", ")}.`,
+                        .join(", ")}`,
+                    {
+                        hint:
+                            ":global: only collects the file's definitions into <ld-svg-globals>;\n" +
+                            "nothing is drawn here, so there is nothing for those options to apply to.",
+                    },
                 );
             }
             currentGlobals().addSvg(svgPath, svg);
             return [];
         }
 
-        if (!data.options?.width)
-            throw new Error("the :width: option is required.");
-        if (!data.options?.height)
-            throw new Error("the :height: option is required.");
+        /*
+         * Not `required: true` in the option spec, tempting as that is:
+         * `:global:` takes neither, and mystmd's `required` cannot be made
+         * conditional. So the check lives here - but it says what the options
+         * are *for*, which is the part that saves the author a trip to the
+         * documentation.
+         */
+        const missing = ["width", "height"].filter(
+            (option) => !data.options?.[option],
+        );
+        if (missing.length > 0) {
+            throw directiveError(
+                data,
+                `${missing.map((o) => `:${o}:`).join(" and ")} ${
+                    missing.length === 1 ? "is" : "are"
+                } required`,
+                {
+                    hint:
+                        "They give the SVG its box on the slide, e.g. `:width: 1600` and `:height: 900`.\n" +
+                        "Use `:global:` instead if the file only holds definitions to be referenced elsewhere.",
+                },
+            );
+        }
 
         return [
             {
@@ -225,7 +265,11 @@ const globalInformation = {
     run(data) {
         const infoType = data.options?.type ?? "cheat-sheet";
         if (!["cheat-sheet", "slide"].includes(infoType)) {
-            throw new Error('type must be "cheat-sheet" or "slide"');
+            throw directiveError(
+                data,
+                `:type: "${infoType}" is not a type of global information`,
+                { hint: "Use `cheat-sheet` (the default) or `slide`." },
+            );
         }
         return [
             {
@@ -279,7 +323,11 @@ const sourceDirective = {
                 resolved = absolute;
                 break;
             default:
-                throw new Error(`unknown path type: ${mode}`);
+                throw directiveError(
+                    data,
+                    `:path: "${mode}" is not a path type`,
+                    { hint: "Use `relative` (the default) or `absolute`." },
+                );
         }
         return [
             {
@@ -309,10 +357,11 @@ const include = {
         let text;
         try {
             text = fs.readFileSync(target, "utf-8");
-        } catch {
+        } catch (error) {
             throw directiveError(
                 data,
-                `cannot read "${data.arg}" (resolved to ${target})`,
+                `cannot read "${data.arg}": ${error.code ?? error.message}`,
+                { hint: `Resolved to ${target}, relative to this document.` },
             );
         }
         const startAfter = unquote(data.options?.["start-after"]);
@@ -324,7 +373,10 @@ const include = {
             if (at === -1) {
                 throw directiveError(
                     data,
-                    `${data.arg}: start-after: ${JSON.stringify(startAfter)} does not occur in the file`,
+                    `:start-after: ${JSON.stringify(startAfter)} does not occur in ${data.arg}`,
+                    {
+                        hint: "The marker is matched literally, whitespace included.",
+                    },
                 );
             }
             text = text.slice(at + startAfter.length);
@@ -334,13 +386,45 @@ const include = {
             if (at === -1) {
                 throw directiveError(
                     data,
-                    `${data.arg}: end-before: ${JSON.stringify(endBefore)} does not occur after the start marker`,
+                    `:end-before: ${JSON.stringify(endBefore)} does not occur after :start-after: in ${data.arg}`,
+                    {
+                        hint: "It has to come *after* the start marker; the file is cut there first.",
+                    },
                 );
             }
             text = text.slice(0, at);
         }
-        const parsed = ctx.parseMyst(text);
-        return parsed.children ?? [];
+        /*
+         * Parse the included text as *that* file.
+         *
+         * mystmd offers `ctx.parseMyst`, which re-enters the parse as if the
+         * text were part of the including document: line numbers get shifted
+         * to the position of this directive and the current source never
+         * changes. A mistake three files deep was then reported against the
+         * deck, at a line where the deck has something else entirely - the
+         * single most misleading thing the toolchain did.
+         *
+         * `withIncludedSource` makes the included file the current one for the
+         * duration, and `markOrigin` records that on the nodes so that a
+         * transform running long after the parse can still tell where they are
+         * written. `ctx.parseMyst` remains the fallback for plain `mystmd`,
+         * where there is no LectureDoc2 build context to speak of.
+         */
+        const parseNested = currentParseNested();
+        if (!parseNested) return ctx.parseMyst(text).children ?? [];
+
+        const line =
+            data?.node?.position?.start?.line === undefined
+                ? undefined
+                : data.node.position.start.line + currentFrontmatterOffset();
+        const parsed = withIncludedSource(target, { line }, () =>
+            parseNested(text),
+        );
+        const children = parsed.children ?? [];
+        return markOrigin(children, {
+            file: target,
+            includedFrom: [{ file: source, line }, ...currentIncludeStack()],
+        });
     },
 };
 
@@ -384,13 +468,9 @@ const literalInclude = {
     },
     run(data) {
         const options = { ...(data.options ?? {}) };
-        for (const key of [
-            "start-at",
-            "start-after",
-            "end-at",
-            "end-before",
-        ]) {
-            if (options[key] !== undefined) options[key] = unquote(options[key]);
+        for (const key of ["start-at", "start-after", "end-at", "end-before"]) {
+            if (options[key] !== undefined)
+                options[key] = unquote(options[key]);
         }
 
         const source = currentSource();
@@ -398,10 +478,11 @@ const literalInclude = {
         let text;
         try {
             text = fs.readFileSync(target, "utf-8");
-        } catch {
+        } catch (error) {
             throw directiveError(
                 data,
-                `cannot read "${data.arg}" (resolved to ${target})`,
+                `cannot read "${data.arg}": ${error.code ?? error.message}`,
+                { hint: `Resolved to ${target}, relative to this document.` },
             );
         }
 
@@ -409,7 +490,9 @@ const literalInclude = {
         try {
             selected = selectLines(text, options);
         } catch (error) {
-            throw directiveError(data, `${data.arg}: ${error.message}`);
+            throw directiveError(data, `${error.message} (in ${data.arg})`, {
+                hint: error.ldHint,
+            });
         }
 
         return [

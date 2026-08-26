@@ -3,6 +3,7 @@
 import { fileWarn } from "myst-common";
 import { visit } from "unist-util-visit";
 
+import { DirectiveError, nodeError } from "../context.js";
 import { INLINE_TYPES, makeClasses, makeId, toText } from "../util.js";
 import { encryptAESGCM } from "../crypto.js";
 
@@ -36,12 +37,15 @@ export function liftDirectives(tree) {
                     lifted.push(node);
                 }
             } else if (child.type === "mystDirectiveError") {
-                const at = child.position?.start?.line
-                    ? ` (line ${child.position.start.line})`
-                    : "";
-                throw new Error(
-                    `directive "${child.name}"${at}: ${child.message ?? "invalid"}`,
-                );
+                /*
+                 * mystmd replaces a directive it could not use with this node
+                 * and records the reason on the vfile. The node knows where it
+                 * is, so the report can too - it used to say "(line 42)" of a
+                 * file it never named.
+                 */
+                throw nodeError(child, child.message ?? "invalid directive", {
+                    directive: child.name,
+                });
             } else {
                 lifted.push(child);
             }
@@ -265,8 +269,12 @@ export function applySubstitutions(tree, substitutions = {}, parseMyst) {
     const mystNodes = (name, value) => {
         if (parsed.has(name)) return parsed.get(name);
         if (!parseMyst) {
-            throw new Error(
+            throw new DirectiveError(
                 `substitution "${name}" uses \`myst:\` but no parser was given`,
+                {
+                    internal: true,
+                    hint: "`convertFile` supplies one; a caller using the transforms directly has to.",
+                },
             );
         }
         const tree = liftDirectives(parseMyst(value));
@@ -705,7 +713,14 @@ export function numberExercises(tree) {
         // is regularly wrapped in a `container` (as in the reST sources).
         const solutions = solutionsIn(exercise);
         if (solutions.length > 1) {
-            throw new Error(`exercise "${title}" has more than one solution`);
+            throw nodeError(
+                exercise,
+                `exercise "${title}" has ${solutions.length} solutions`,
+                {
+                    directive: "exercise",
+                    hint: "An exercise has at most one `{solution}`; each one gets its own password, and only the first could be handed out.",
+                },
+            );
         }
         for (const solution of solutions) {
             claimed.add(solution);
@@ -715,7 +730,14 @@ export function numberExercises(tree) {
 
     visit(tree, "ldSolution", (solution) => {
         if (!claimed.has(solution)) {
-            throw new Error("solutions must be nested inside exercises");
+            throw nodeError(
+                solution,
+                "this solution is not inside an exercise",
+                {
+                    directive: "solution",
+                    hint: "A `{solution}` is encrypted with the password its `{exercise}` hands out, so it has to sit inside one.",
+                },
+            );
         }
     });
     return passwords;
@@ -742,7 +764,10 @@ export async function encryptProtectedContent(
     });
     visit(tree, "ldPresenterNote", (node) => {
         if (!masterPassword) {
-            throw new Error("presenter notes require a master password");
+            throw nodeError(node, "presenter notes require a master password", {
+                directive: "presenter-note",
+                hint: "Set `master-password` under `ld:` in myst.yml, in the secrets file, or in this document's frontmatter.\nWithout it the note cannot be encrypted, and it must not be shipped in the clear.",
+            });
         }
         jobs.push({ node, password: masterPassword });
     });

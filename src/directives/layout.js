@@ -2,7 +2,20 @@
  * supplemental, compound and the docutils compatible `class` directive.
  */
 
+import { directiveError } from "../context.js";
 import { makeClasses, makeId, titleNode, toText } from "../util.js";
+
+/**
+ * The class a directive adds by itself, written out in the argument as well.
+ *
+ * Harmless in effect but always a misunderstanding, so it is worth stopping -
+ * and worth saying *why* it is refused rather than just that it is.
+ */
+function superfluousClass(data, name) {
+    return directiveError(data, `"${name}" is superfluous here`, {
+        hint: `\`${data.name}\` adds the \`${name}\` class itself; the argument is for *additional* classes.`,
+    });
+}
 
 const classOption = { type: String, doc: "Additional CSS classes." };
 const nameOption = { type: String, doc: "Explicit target name / HTML id." };
@@ -44,9 +57,7 @@ const deck = {
     body: { type: "myst", required: true },
     run(data) {
         if (/\bdeck\b/.test(data.arg ?? "")) {
-            throw new Error(
-                '"deck" is superfluous; it is automatically added.',
-            );
+            throw superfluousClass(data, "deck");
         }
         return [
             {
@@ -74,11 +85,9 @@ const card = {
     body: { type: "myst", required: true },
     run(data) {
         const arg = data.arg ?? "";
-        if (/\bcard\b/.test(arg)) throw new Error('"card" is superfluous.');
+        if (/\bcard\b/.test(arg)) throw superfluousClass(data, "card");
         if (/\bincremental\b/.test(arg)) {
-            throw new Error(
-                '"incremental" is superfluous; it is added automatically.',
-            );
+            throw superfluousClass(data, "incremental");
         }
         return [
             {
@@ -213,9 +222,7 @@ const supplemental = {
     body: { type: "myst" },
     run(data) {
         if (/\bsupplemental\b/.test(data.arg ?? "")) {
-            throw new Error(
-                '"supplemental" is superfluous; it is added automatically.',
-            );
+            throw superfluousClass(data, "supplemental");
         }
         return [
             {
@@ -269,7 +276,11 @@ const moduleDirective = {
     run(data) {
         const scope = (data.options?.scope ?? "all").toLowerCase();
         if (!["slide", "document", "all"].includes(scope)) {
-            throw new Error('scope must be "slide", "document" or "all"');
+            throw directiveError(
+                data,
+                `:scope: "${data.options?.scope}" is not a scope`,
+                { hint: "Use `slide`, `document` or `all` (the default)." },
+            );
         }
         return [
             {

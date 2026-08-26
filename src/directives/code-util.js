@@ -14,8 +14,9 @@ export const CODE_PRESENTATION_OPTIONS = {
         type: String,
         doc: "Show line numbers, optionally starting at the given number.",
     },
-    "linenos": { type: Boolean, doc: "Show line numbers." },
+    /*"linenos": { type: Boolean, doc: "Show line numbers." },
     "lineno-start": { type: String, doc: "First line number." },
+    */
     "line-number-digits": {
         type: String,
         doc: "Minimum width of the line number gutter (1-4).",
@@ -63,10 +64,25 @@ export const CODE_SELECTION_OPTIONS = {
     },
 };
 
+/**
+ * An error from a helper that has no directive node to point at.
+ *
+ * The directive wrapper turns it into a positioned `DirectiveError` and takes
+ * `ldHint` along, so these read the same as one raised at the directive.
+ */
+function authorError(message, hint) {
+    const error = new Error(message);
+    if (hint) error.ldHint = hint;
+    return error;
+}
+
 export function lineNumberDigits(value) {
     const digits = Number.parseInt(value, 10);
     if (Number.isNaN(digits) || digits < 1 || digits > 4) {
-        throw new Error("line-number-digits must be between 1 and 4");
+        throw authorError(
+            `:line-number-digits: "${value}" is not a number between 1 and 4`,
+            "It reserves the width of the line number column; 2 fits 99 lines.",
+        );
     }
     return digits;
 }
@@ -88,15 +104,19 @@ export function parseEmphasizeLines(spec) {
             const from = Number.parseInt(range[1], 10);
             const to = Number.parseInt(range[2], 10);
             if (from > to) {
-                throw new Error(
-                    `emphasize-lines: range "${item}" starts after it ends`,
+                throw authorError(
+                    `:emphasize-lines: range "${item}" starts after it ends`,
+                    `Write it as "${to}-${from}".`,
                 );
             }
             for (let i = from; i <= to; i++) lines.add(i);
             continue;
         }
         if (!/^\d+$/.test(item)) {
-            throw new Error(`emphasize-lines: cannot parse "${item}"`);
+            throw authorError(
+                `:emphasize-lines: cannot parse "${item}"`,
+                'Expected line numbers and ranges, e.g. "3,5,7-9". Lines count from 1 within the shown block.',
+            );
         }
         lines.add(Number.parseInt(item, 10));
     }
@@ -124,7 +144,10 @@ function parseLineSpec(spec, total) {
             continue;
         }
         if (!/^\d+$/.test(item)) {
-            throw new Error(`lines: cannot parse "${item}"`);
+            throw authorError(
+                `:lines: cannot parse "${item}"`,
+                'Expected line numbers and ranges, e.g. "1,4-12".',
+            );
         }
         wanted.add(Number.parseInt(item, 10));
     }
@@ -136,8 +159,9 @@ function findLine(lines, text, from, option) {
     if (index === -1) {
         // Silently returning the whole file is how a deck drifts out of sync
         // with the code it shows - so this is an error, not a warning.
-        throw new Error(
-            `${option}: no line containing ${JSON.stringify(text)} was found`,
+        throw authorError(
+            `:${option}: no line containing ${JSON.stringify(text)} was found`,
+            "The text is matched literally, anywhere in a line. If the file changed, the marker may have gone with it.",
         );
     }
     return index;
@@ -146,8 +170,9 @@ function findLine(lines, text, from, option) {
 function exclusive(options, group) {
     const given = group.filter((key) => options[key] !== undefined);
     if (given.length > 1) {
-        throw new Error(
-            `conflicting options: ${given.map((g) => `"${g}"`).join(", ")} - use only one`,
+        throw authorError(
+            `${given.map((g) => `:${g}:`).join(" and ")} cannot be combined`,
+            "Each of them picks where the excerpt starts or ends; use one.",
         );
     }
     return given[0];
@@ -165,7 +190,10 @@ function dedent(lines, spec) {
     } else {
         count = Number.parseInt(spec, 10);
         if (Number.isNaN(count) || count < 0) {
-            throw new Error("dedent must be a non-negative number");
+            throw authorError(
+                `:dedent: "${spec}" is not a non-negative number`,
+                "Leave it empty to strip whatever indentation all selected lines share.",
+            );
         }
     }
     return count > 0 ? lines.map((l) => l.slice(count)) : lines;
@@ -194,8 +222,9 @@ export function selectLines(text, options = {}) {
         if (picked.length === 0) {
             // Selecting lines the file does not have is the same drift as a
             // marker that disappeared - do not render an empty block.
-            throw new Error(
-                `lines: "${options.lines}" selects nothing (the file has ${lines.length} lines)`,
+            throw authorError(
+                `:lines: "${options.lines}" selects nothing`,
+                `The file has ${lines.length} line${lines.length === 1 ? "" : "s"}.`,
             );
         }
         const first = [...wanted].sort((a, b) => a - b)[0] ?? 1;
@@ -224,8 +253,9 @@ export function selectLines(text, options = {}) {
     }
 
     if (to <= from) {
-        throw new Error(
-            "the selected range is empty - check the start/end options",
+        throw authorError(
+            "the selected range is empty",
+            "The end marker or line comes before the start; the excerpt would be nothing.",
         );
     }
 
@@ -242,7 +272,10 @@ export function selectLines(text, options = {}) {
  * @param {object} spec `lang`, `value`, and `originalFirstLine` for
  *   `:lineno-match:`
  */
-export function buildCodeNode(options = {}, { lang, value, originalFirstLine }) {
+export function buildCodeNode(
+    options = {},
+    { lang, value, originalFirstLine },
+) {
     const numberLines = options["number-lines"];
     const showLineNumbers =
         numberLines !== undefined ||

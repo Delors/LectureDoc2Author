@@ -13,7 +13,13 @@ import {
     resolveConfig,
     splitFrontmatter,
 } from "./config.js";
-import { withContext } from "./context.js";
+import {
+    attributeError,
+    DirectiveError,
+    nodeError,
+    withContext,
+} from "./context.js";
+import { collectDiagnostics, hasFatalDiagnostics } from "./diagnostics.js";
 import { createRenderer } from "./render/index.js";
 import { buildDocument } from "./render/document.js";
 import { renderMathEagerly } from "./render/math.js";
@@ -89,9 +95,36 @@ export function outputNameFor(source) {
  */
 export async function convertFile(source, options = {}) {
     const sourcePath = path.resolve(source);
-    const text = fs.readFileSync(sourcePath, "utf-8");
-    const { frontmatter, body, offset: frontmatterOffset } =
-        splitFrontmatter(text);
+    let text;
+    try {
+        text = fs.readFileSync(sourcePath, "utf-8");
+    } catch (error) {
+        throw new DirectiveError(
+            `cannot read the document: ${error.code ?? error.message}`,
+            { file: sourcePath },
+        );
+    }
+    const split = splitFrontmatter(text, { file: sourcePath });
+    /*
+     * The safety net. Everything below this line runs with the document known,
+     * so no matter what goes wrong - a directive, a transform, the renderer, a
+     * bug in here - the error that leaves this function names the file it came
+     * from. That was the whole failure mode this is written against: an
+     * unattributed "the :width: option is required." in a build of thirteen
+     * decks.
+     */
+    try {
+        return await convertDocument(sourcePath, split, options);
+    } catch (error) {
+        throw attributeError(error, {
+            file: sourcePath,
+            frontmatterOffset: split.offset,
+        });
+    }
+}
+
+async function convertDocument(sourcePath, split, options = {}) {
+    const { frontmatter, body, offset: frontmatterOffset } = split;
 
     const configPath =
         options.config ?? findMystConfig(path.dirname(sourcePath));
@@ -110,16 +143,26 @@ export async function convertFile(source, options = {}) {
     // deprecations, ...) can be reported instead of being swallowed.
     const vfile = new VFile({ path: sourcePath });
     const parseOptions = { ...createParseOptions(ld), vfile };
+    /*
+     * What `include` parses an included file with. mystmd offers the directive
+     * its own recursion, but that one re-enters the parse as if the text were
+     * part of *this* document - which is why an error in an included file used
+     * to be reported against the including deck, at a line that does not exist
+     * there. Going through here instead lets `include` establish the included
+     * file as the current source for the duration.
+     */
+    const parseNested = (text) => parse(text, parseOptions);
+    const contextOptions = { root: projectRoot, parseNested };
 
     const { result: tree, globals } = withContext(
         sourcePath,
         () => parse(body, parseOptions),
-        { root: projectRoot, frontmatterOffset },
+        { ...contextOptions, frontmatterOffset },
     );
 
     /* ------------------------------------------------------------- math */
 
-    const { warnings } = renderMathEagerly(tree, {
+    const { warnings: mathWarnings } = renderMathEagerly(tree, {
         macros: ld.katex?.macros ?? {},
     });
 
@@ -136,9 +179,11 @@ export async function convertFile(source, options = {}) {
         substitutions: resolved.substitutions,
         vfile,
         parseMyst: (value) =>
-            withContext(sourcePath, () => parse(String(value), parseOptions), {
-                root: projectRoot,
-            }).result,
+            withContext(
+                sourcePath,
+                () => parse(String(value), parseOptions),
+                contextOptions,
+            ).result,
     });
 
     const passwords = numberExercises(tree);
@@ -150,7 +195,7 @@ export async function convertFile(source, options = {}) {
         const parsed = withContext(
             sourcePath,
             () => parse(String(value), parseOptions),
-            { root: projectRoot },
+            contextOptions,
         ).result;
         // Unwrap a single paragraph so that `Version: 1.3` does not become
         // `<p>1.3</p>` inside the docinfo `<dd>`.
@@ -270,13 +315,46 @@ export async function convertFile(source, options = {}) {
         passwordFiles.push(passwordsPath, `${passwordsPath}.md`);
     }
 
+    /*
+     * One channel for everything that is wrong with this document, positioned
+     * and carrying a severity: mystmd's findings and KaTeX's. The caller
+     * decides what to do with them - `messages` and `warnings` stay for the
+     * tests and for anyone using `convertFile` as a library.
+     */
+    const diagnostics = [
+        ...collectDiagnostics(vfile, {
+            file: sourcePath,
+            frontmatterOffset,
+        }),
+        ...mathWarnings.map((warning) => ({
+            severity: "warn",
+            ruleId: "math-render",
+            /*
+             * `nodeError` positions it and `attributeError` fills in the
+             * document and the frontmatter offset - the same two steps every
+             * other error in the pipeline goes through, so a formula that came
+             * out of an `{include}` is attributed to the file it is written in
+             * rather than to the deck that pulled it in.
+             */
+            error: attributeError(
+                nodeError(warning.node, `math: ${warning.message}`, {
+                    directive: "math",
+                    hint: `in \`${warning.tex}\``,
+                }),
+                { file: sourcePath, frontmatterOffset },
+            ),
+        })),
+    ];
+
     return {
         html,
         outPath,
         passwords,
         passwordFiles,
-        warnings,
+        warnings: mathWarnings,
         messages: vfile.messages,
+        diagnostics,
+        ok: !hasFatalDiagnostics(diagnostics),
         tree,
     };
 }

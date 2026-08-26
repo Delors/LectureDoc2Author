@@ -115,14 +115,14 @@ test("selectLines: dedent takes an explicit count", () => {
 test("selectLines: a missing marker is an error, not a silent whole file", () => {
     assert.throws(
         () => selectLines(SAMPLE, { "start-after": "# [begin:nope]" }),
-        /no line containing "# \[begin:nope\]" was found/,
+        /:start-after: no line containing "# \[begin:nope\]" was found/,
     );
 });
 
 test("selectLines: conflicting selectors are rejected", () => {
     assert.throws(
         () => selectLines(SAMPLE, { "lines": "1-2", "start-at": "import" }),
-        /conflicting options/,
+        /:lines: and :start-at: cannot be combined/,
     );
 });
 
@@ -218,7 +218,7 @@ test("a missing marker fails the build and names the directive", () => {
             render(
                 '```{literalinclude} file.py\n:start-after: "# [begin:nope]"\n```',
             ),
-        /file\.py: start-after: no line containing/,
+        /:start-after: no line containing .* \(in file\.py\)/,
     );
 });
 
@@ -257,7 +257,7 @@ test("the reported line counts the frontmatter", () => {
 test("a `lines` range beyond the end of the file is an error", () => {
     assert.throws(
         () => selectLines(SAMPLE, { lines: "99-100" }),
-        /selects nothing \(the file has 11 lines\)/,
+        /:lines: "99-100" selects nothing/,
     );
 });
 
@@ -265,14 +265,14 @@ test("format() renders `file:line: directive: message`", () => {
     const error = errorFrom("```{literalinclude} nope.py\n```");
     assert.match(
         error.format((f) => f.split("/").pop()),
-        /^deck\.md:1: literalinclude: cannot read "nope\.py"/,
+        /^deck\.md:1:1: literalinclude: cannot read "nope\.py"/,
     );
 });
 
 test("include reports a missing marker instead of silently slicing", () => {
     assert.throws(
         () => render('```{include} file.py\n:start-after: "nope"\n```'),
-        /start-after: "nope" does not occur in the file/,
+        /:start-after: "nope" does not occur in file\.py/,
     );
 });
 

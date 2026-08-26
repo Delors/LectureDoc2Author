@@ -90,7 +90,7 @@ LectureDoc2 die Folien vermisst.
 # Code und Scrollables
 
 ```{code-block} python
-:linenos:
+:number-lines:
 
 def fib(n):
     a, b = 0, 1
@@ -158,17 +158,14 @@ Ein Absatz …
 … und noch einer, die logisch zusammengehören.
 :::
 
-Quelle dieser Folien:
+[Quelle dieser Folien](https://github.com/Delors/LectureDoc2Author/blob/main/example/example-slides.de.md)
 
-```{source}
-:prefix: https://github.com/Delors/Lectures-Myst/blob/main/
-```
 
 # Eingebettetes SVG und globale Informationen
 
 ```{include-svg} kreis.svg
-:width: 120px
-:height: 120px
+:width: 20ch
+:height: 20ch
 :alt: Ein Kreis
 :class: align-center
 ```

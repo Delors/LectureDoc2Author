@@ -28,7 +28,14 @@ import { pathToFileURL } from "node:url";
 
 import { convertFile, outputNameFor } from "./build.js";
 import { findMystConfig } from "./config.js";
-import { DirectiveError } from "./context.js";
+import { attributeError } from "./context.js";
+import { strictFailure } from "./diagnostics.js";
+import {
+    debugEnabled,
+    reportDiagnostic,
+    reportError,
+    reportSummary,
+} from "./report.js";
 import { serve } from "./serve.js";
 
 import { loadConfig } from "./ld/config.js";
@@ -74,6 +81,8 @@ Options:
       --root <d>       serve: directory to serve (default: the project root).
       --no-open        serve: do not print the first deck's URL.
       --no-live-reload serve: do not inject the live reload script.
+      --no-strict      Write the output even when a document has errors.
+      --debug          Print stack traces; also LD2_DEBUG=1.
   -h, --help           Show this message.
 
 LectureDoc2 loads its JavaScript as an ES module and uses crypto.subtle, therefore 
@@ -115,18 +124,41 @@ async function convertOne(file, options) {
         `  ${path.relative(process.cwd(), result.outPath)} ` +
             `(${Date.now() - started} ms)`,
     );
-    for (const warning of result.warnings ?? []) {
-        console.warn(`    math: ${warning.message} in "${warning.tex}"`);
-    }
-    for (const message of result.messages ?? []) {
-        console.warn(
-            `    ${file}${message.line ? `:${message.line}` : ""}: ${message.reason}`,
-        );
+    for (const diagnostic of result.diagnostics ?? []) {
+        reportDiagnostic(diagnostic, { root: process.cwd(), prefix: "    " });
     }
     for (const passwords of result.passwordFiles ?? []) {
-        console.log(`    passwords -> ${path.relative(process.cwd(), passwords)}`);
+        console.log(
+            `    passwords -> ${path.relative(process.cwd(), passwords)}`,
+        );
     }
     return result;
+}
+
+/**
+ * `convertOne`, but a failure is reported and returned rather than thrown.
+ *
+ * The difference matters most for `serve`: one deck with a typo in it used to
+ * abort the loop over all thirteen and take the server down with it, so a
+ * mistake in the file you are *not* working on stopped you from looking at the
+ * one you are. Now every document gets its turn and the server comes up with
+ * whatever built.
+ */
+async function convertOneReporting(file, options, { root }) {
+    const debug = debugEnabled(options);
+    try {
+        const result = await convertOne(file, options);
+        if (!result.ok && !options["no-strict"]) {
+            const error = strictFailure(path.resolve(file), result.diagnostics);
+            reportError(error, { root, debug });
+            return { file, src: path.resolve(file), result, error };
+        }
+        return { file, src: path.resolve(file), result };
+    } catch (error) {
+        const attributed = attributeError(error, { file: path.resolve(file) });
+        reportError(attributed, { root, debug });
+        return { file, src: path.resolve(file), error: attributed };
+    }
 }
 
 function reportPlan(plan, { prune, showHolds = false }) {
@@ -177,7 +209,9 @@ function reportPlan(plan, { prune, showHolds = false }) {
         }
         if (scope.blocked) {
             problems++;
-            console.error(`  pruning disabled for this scope: ${scope.blocked}`);
+            console.error(
+                `  pruning disabled for this scope: ${scope.blocked}`,
+            );
         }
     }
     return problems;
@@ -188,20 +222,29 @@ function reportPlan(plan, { prune, showHolds = false }) {
 async function cmdBuild(config, files, options) {
     if (files.length > 0 && !config) {
         console.log(`building ${files.length} document(s):`);
-        for (const file of files) await convertOne(file, options);
-        return 0;
+        const root = process.cwd();
+        const results = [];
+        for (const file of files) {
+            results.push(await convertOneReporting(file, options, { root }));
+        }
+        return reportSummary(results, { root }) > 0 ? 1 : 0;
     }
     const only = files.length
         ? files.map((f) => relPosix(config.root, path.resolve(f)))
         : null;
     const { stale, fresh } = planBuild(config, { force: options.force, only });
     if (stale.length === 0) {
-        console.log(`nothing to build (${fresh.length} document(s) up to date)`);
+        console.log(
+            `nothing to build (${fresh.length} document(s) up to date)`,
+        );
         return 0;
     }
     console.log(`building ${stale.length} document(s):`);
-    const results = await runBuild(config, stale);
-    return results.some((r) => r.error) ? 1 : 0;
+    const results = await runBuild(config, stale, {
+        debug: debugEnabled(options),
+        strict: !options["no-strict"],
+    });
+    return reportSummary(results, { root: config.root }) > 0 ? 1 : 0;
 }
 
 /**
@@ -217,15 +260,27 @@ function serverRoot(config, options, files) {
     if (config) return config.root;
     const mystConfig =
         options["myst-config"] ??
-        (files[0] ? findMystConfig(path.dirname(path.resolve(files[0]))) : null);
+        (files[0]
+            ? findMystConfig(path.dirname(path.resolve(files[0])))
+            : null);
     return mystConfig ? path.dirname(mystConfig) : process.cwd();
 }
 
 async function cmdServe(config, files, options) {
     const documents = documentsFor(config, files, options);
     console.log(`building ${documents.length} document(s):`);
+    const buildRoot = config?.root ?? process.cwd();
     const results = [];
-    for (const file of documents) results.push(await convertOne(file, options));
+    for (const file of documents) {
+        results.push(
+            await convertOneReporting(file, options, { root: buildRoot }),
+        );
+    }
+    /*
+     * Reported, not fatal: a broken deck must not keep the other twelve from
+     * being served. The watcher below rebuilds it as soon as it is fixed.
+     */
+    reportSummary(results, { root: buildRoot });
 
     const root = serverRoot(config, options, documents);
     const port = options.port ? Number.parseInt(options.port, 10) : 8000;
@@ -239,7 +294,10 @@ async function cmdServe(config, files, options) {
     });
     console.log(`\nserving ${root}\n  ${server.url}`);
     if (!options["no-open"]) {
-        for (const result of results) {
+        for (const { result } of results) {
+            // A document that failed has no output to link to; the others are
+            // served regardless, which is the point of not aborting above.
+            if (!result?.outPath) continue;
             const rel = relPosix(root, result.outPath);
             if (!rel.startsWith("..")) console.log(`  ${server.url}/${rel}`);
         }
@@ -255,11 +313,7 @@ async function cmdServe(config, files, options) {
         },
         async () => {
             for (const file of documents) {
-                try {
-                    await convertOne(file, options);
-                } catch (error) {
-                    console.error(`  [error] ${file}: ${error.message}`);
-                }
+                await convertOneReporting(file, options, { root: buildRoot });
             }
             await server.reload();
         },
@@ -280,7 +334,8 @@ async function cmdPdf(config, files, options) {
     }
     if (options["dry-run"]) {
         console.log(`${stale.length} PDF(s) would be rendered:`);
-        for (const job of stale) console.log(`  ${job.rel}.pdf (${job.reason})`);
+        for (const job of stale)
+            console.log(`  ${job.rel}.pdf (${job.reason})`);
         return 0;
     }
     const results = await runPdf(config, stale);
@@ -386,7 +441,7 @@ async function cmdStatus(config) {
     return problems > 0 ? 1 : 0;
 }
 
-async function cmdWatch(config) {
+async function cmdWatch(config, options = {}) {
     /*
      * One pass = build what is stale, then publish. Both are incremental, so a
      * pass over an unchanged project is a few hundred `stat` calls and no I/O.
@@ -398,7 +453,13 @@ async function cmdWatch(config) {
             `\n[${new Date().toTimeString().slice(0, 8)}] ${paths.length} change(s)`,
         );
         const { stale } = planBuild(config, {});
-        if (stale.length > 0) await runBuild(config, stale);
+        if (stale.length > 0) {
+            const results = await runBuild(config, stale, {
+                debug: debugEnabled(options),
+                strict: !options["no-strict"],
+            });
+            reportSummary(results, { root: config.root });
+        }
 
         const manifest = readManifest(config.statePath, config.target);
         const plan = await planPublish(config, manifest);
@@ -434,13 +495,16 @@ async function cmdWatch(config) {
 /* --------------------------------------------------------------------- main */
 
 /** Commands that cannot work without knowing where the target folder is. */
-const NEEDS_CONFIG = new Set([
-    "watch",
-    "pdf",
-    "publish",
-    "status",
-    "clean",
-]);
+const NEEDS_CONFIG = new Set(["watch", "pdf", "publish", "status", "clean"]);
+/**
+ * The commands that actually write to - or read - the target folder.
+ *
+ * `clean` is deliberately not among them: it removes what `build` and `pdf`
+ * generated *inside the project* and never touches the target, so refusing to
+ * run because the target is missing would be refusing over something it was
+ * not going to look at.
+ */
+const NEEDS_TARGET = new Set(["watch", "publish", "status"]);
 
 async function main() {
     const { values, positionals } = parseArgs({
@@ -462,6 +526,8 @@ async function main() {
             "root": { type: "string" },
             "no-open": { type: "boolean", default: false },
             "no-live-reload": { type: "boolean", default: false },
+            "no-strict": { type: "boolean", default: false },
+            "debug": { type: "boolean", default: false },
             "help": { type: "boolean", short: "h", default: false },
         },
     });
@@ -492,6 +558,7 @@ async function main() {
 
     const config = loadConfig(values.config, {
         required: NEEDS_CONFIG.has(command),
+        needsTarget: NEEDS_TARGET.has(command),
     });
 
     switch (command) {
@@ -500,7 +567,7 @@ async function main() {
         case "serve":
             return cmdServe(config, files, values);
         case "watch":
-            return cmdWatch(config);
+            return cmdWatch(config, values);
         case "pdf":
             return cmdPdf(config, files, values);
         case "publish":
@@ -531,15 +598,19 @@ if (process.argv[1] && import.meta.url === mainModuleURL()) {
     main()
         .then((code) => process.exit(code ?? 0))
         .catch((error) => {
-            // A mistake in a document is reported as `file:line: message`; a
-            // stack trace would only bury the one line the author needs.
-            if (error instanceof DirectiveError) {
-                console.error(
-                    error.format((file) => path.relative(process.cwd(), file)),
-                );
-            } else {
-                console.error(`[error] ${error.message}`);
-            }
+            /*
+             * Whatever reaches here is a failure of the *run* rather than of
+             * one document - a missing configuration, an unusable target, a
+             * bug. Document problems are reported where they happen, with the
+             * file they belong to. Either way it goes through one formatter.
+             */
+            reportError(error, {
+                root: process.cwd(),
+                debug: debugEnabled({
+                    debug: process.argv.includes("--debug"),
+                }),
+                prefix: "[error] ",
+            });
             process.exit(1);
         });
 }
