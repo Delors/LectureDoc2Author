@@ -403,9 +403,12 @@ export function buildHandlers(ctx) {
 
     /** `{java}`x`` -> `<code class="java">…</code>` (docutils' code role). */
     const ldInlineCode = (h, node) =>
-        h(node, "code", { class: cls(node.lang, node.class) }, [
-            raw(highlight(node.value ?? "", node.lang)),
-        ]);
+        h(
+            node,
+            "code",
+            { class: cls(node.lang, node.class), id: node.identifier },
+            [raw(highlight(node.value ?? "", node.lang))],
+        );
 
     /* Normally consumed by `extractTitles`; a fallback so a stray argument is
      * never swallowed silently. */
@@ -459,7 +462,10 @@ export function buildHandlers(ctx) {
                 cell.header ? "th" : "td",
                 {
                     // docutils marks header cells with `class="head"`.
-                    class: cls(cell.class, cell.header ? "head" : undefined),
+                    class: cls(
+                        cell.class,
+                        cell.header && !cell.stubOnly ? "head" : undefined,
+                    ),
                     style: cell.align
                         ? `text-align: ${cell.align};`
                         : undefined,
@@ -711,8 +717,18 @@ export function buildHandlers(ctx) {
             node.value ? [raw(node.value)] : [],
         );
 
+    /*  This project's class roles (`{eng}`text``) produce an `ldSpan`;
+        mystmd's built-in `{span}` role produces a `span` node. Both are
+        rendered by this handler (see the handler table below), so
+        `{span .incremental-2 #x}`m`` is the generic escape hatch for a class
+        or an id that has no role of its own. */
     const ldSpan = (h, node) =>
-        h(node, "span", { class: cls(node.class) }, all(h, node));
+        h(
+            node,
+            "span",
+            { class: cls(node.class), id: node.identifier },
+            all(h, node),
+        );
 
     const ldKbd = (h, node) =>
         h(node, "kbd", {}, [u("text", node.value ?? "")]);
@@ -865,6 +881,8 @@ export function buildHandlers(ctx) {
         ldFigure,
         ldModule,
         ldSpan,
+        // mystmd's built-in `{span}` role - rendered like an `ldSpan`.
+        span: ldSpan,
         ldKbd,
         ldSource,
         ldIncludeSvg,

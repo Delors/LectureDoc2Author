@@ -8,6 +8,7 @@ import { blockDirectives } from "./blocks.js";
 export { STANDARD_ADMONITIONS, TITLED_ADMONITIONS } from "./admonitions.js";
 export {
     columnPercentages,
+    csvDelimiter,
     lengthOrPercentage,
     parseCsv,
     parseCsvLine,

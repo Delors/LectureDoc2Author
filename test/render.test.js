@@ -87,6 +87,21 @@ test("an attribute list in inline code stays literal", () => {
     assert.match(html, /<ul class="simple">/);
 });
 
+test("the {span} role renders a span with its inline attributes", () => {
+    const html = render("a {span .incremental-2 #rail-1}`m` b");
+    assert.match(html, /<span class="incremental-2" id="rail-1">m<\/span>/);
+    // and it stays inline: no <div> from the unknown-node fallback
+    assert.doesNotMatch(html, /<div>m<\/div>/);
+});
+
+test("roles combine their own classes with inline attributes", () => {
+    assert.match(
+        render("{incremental .fade-in}`x`"),
+        /<span class="incremental fade-in">x<\/span>/,
+    );
+    assert.match(render("{code #c}`y`"), /<code id="c">y<\/code>/);
+});
+
 test("lists follow the docutils 'simple' rules", () => {
     assert.match(render("- a\n- b"), /<ul class="simple">/);
     // two paragraphs in one item -> not simple

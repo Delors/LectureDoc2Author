@@ -133,6 +133,7 @@ export const INLINE_TYPES = new Set([
     "abbreviation",
     "keyboard",
     "footnoteReference",
+    "span",
     "ldSpan",
     "ldInlineCode",
     "ldSource",

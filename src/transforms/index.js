@@ -4,7 +4,13 @@ import { fileWarn } from "myst-common";
 import { visit } from "unist-util-visit";
 
 import { DirectiveError, nodeError } from "../context.js";
-import { INLINE_TYPES, makeClasses, makeId, toText } from "../util.js";
+import {
+    INLINE_TYPES,
+    makeClasses,
+    makeId,
+    mergeClasses,
+    toText,
+} from "../util.js";
 import { encryptAESGCM } from "../crypto.js";
 
 /* ------------------------------------------------------------------------ */
@@ -235,6 +241,64 @@ export function applyBlockAttributes(tree, vfile) {
                 }
             }
         }
+    });
+    return tree;
+}
+
+/* ------------------------------------------------------------------------ */
+/* Tables                                                                   */
+/* ------------------------------------------------------------------------ */
+
+/**
+ * Unwraps the `container` that mystmd's `table` directive builds around its
+ * table.
+ *
+ * The directive puts `:class:`, `:name:` and the caption on the *container*
+ * and leaves the inner `table` node bare. The renderer knows a single table
+ * node - `ldTable`, what `csv-table` and `list-table` build - so without this
+ * the classes and the caption are silently dropped. The container itself has
+ * no counterpart in docutils' markup either; it would render as a stray
+ * `<div>` around the table.
+ *
+ * Runs before `applyBlockAttributes` so that an attribute line in front of the
+ * directive attaches to the table rather than to the container.
+ */
+export function unwrapTableContainers(tree) {
+    const captionNodes = (caption) => {
+        const children = caption.children ?? [];
+        // docutils' `<caption>` holds inline content; the directive wraps the
+        // argument in a paragraph.
+        return children.length === 1 && children[0].type === "paragraph"
+            ? (children[0].children ?? [])
+            : children;
+    };
+
+    visit(tree, (node) => {
+        if (!Array.isArray(node.children)) return;
+        node.children = node.children.map((child) => {
+            if (child.type !== "container" || child.kind !== "table") {
+                return child;
+            }
+            const table = (child.children ?? []).find(
+                (c) => c.type === "table" || c.type === "ldTable",
+            );
+            if (!table) return child;
+
+            const caption = (child.children ?? []).find(
+                (c) => c.type === "caption",
+            );
+            table.type = "ldTable";
+            table.class = mergeClasses(
+                makeClasses(child.class),
+                makeClasses(table.class),
+            );
+            table.identifier = table.identifier ?? child.identifier;
+            if (caption && !table.caption?.length) {
+                table.caption = captionNodes(caption);
+            }
+            if (!table.position) table.position = child.position;
+            return table;
+        });
     });
     return tree;
 }
@@ -801,6 +865,7 @@ export function runTransforms(
 ) {
     liftDirectives(tree);
     extractTitles(tree);
+    unwrapTableContainers(tree);
     applyHeadingAttributes(tree);
     applyBlockAttributes(tree, vfile);
     applySubstitutions(tree, substitutions, parseMyst);

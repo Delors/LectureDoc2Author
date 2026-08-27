@@ -3,6 +3,7 @@ import { test } from "node:test";
 
 import {
     columnPercentages,
+    csvDelimiter,
     lengthOrPercentage,
     parseCsv,
     parseCsvLine,
@@ -45,6 +46,57 @@ test("csv-table produces a docutils shaped table", () => {
     assert.match(html, /class="katex"/);
 });
 
+test(":delim: names the field separator, `space` and `tab` by name", () => {
+    assert.equal(csvDelimiter(undefined), ",");
+    assert.equal(csvDelimiter("space"), " ");
+    assert.equal(csvDelimiter("tab"), "\t");
+    assert.equal(csvDelimiter("\\u0009"), "\t");
+    assert.equal(csvDelimiter(";"), ";");
+});
+
+test("a space delimiter collapses the runs of spaces that align a table", () => {
+    // csv.Dialect.skipinitialspace - otherwise every alignment space would
+    // open an empty cell.
+    const rows = parseCsv('1   oggv  og   chvgt " "\n', " ");
+    assert.deepEqual(rows, [["1", "oggv", "og", "chvgt", ""]]);
+    assert.deepEqual(parseCsvLine("a b c", " "), ["a", "b", "c"]);
+});
+
+test("csv-table :delim: applies to the body and to :header:", () => {
+    const html = render(
+        "```{csv-table}\n:delim: space\n:header: a b c\n\nD E F\n```",
+    );
+    assert.match(
+        html,
+        /<thead><tr><th class="head"><p>a<\/p><\/th><th class="head"><p>b<\/p>/,
+    );
+    assert.match(html, /<tbody><tr><td><p>D<\/p><\/td><td><p>E<\/p><\/td>/);
+});
+
+test("csv-table pads short rows to the width of the widest row", () => {
+    const html = render("```{csv-table}\n\na, b, c\nd\n```");
+    assert.match(html, /<tr><td><p>d<\/p><\/td><td><\/td><td><\/td><\/tr>/);
+});
+
+test("csv-table :stub-columns: turns leading cells into row headers", () => {
+    const html = render(
+        "```{csv-table}\n:header: Angriff, Bekannt\n:stub-columns: 1\n\n" +
+            "Ciphertext Only, Chiffretext\n```",
+    );
+    // docutils: the header cell of a stub column carries both classes ...
+    assert.match(
+        html,
+        /<thead><tr><th class="stub head"><p>Angriff<\/p><\/th>/,
+    );
+    // ... while a stub cell in the body is a `<th>` without `head`.
+    assert.match(
+        html,
+        /<tbody><tr><th class="stub"><p>Ciphertext Only<\/p><\/th>/,
+    );
+    // The remaining columns stay ordinary data cells.
+    assert.match(html, /<td><p>Chiffretext<\/p><\/td>/);
+});
+
 test("a Markdown pipe table is rendered like a csv-table", () => {
     const html = render(
         "{.incremental-table-rows}\n\n" +
@@ -62,6 +114,99 @@ test("a Markdown pipe table is rendered like a csv-table", () => {
     assert.match(html, /<tr><td><\/td><td><\/td><\/tr>/);
     // No column alignment given, so no stray `text-align`.
     assert.doesNotMatch(html, /text-align/);
+});
+
+const listTable = (opts, rows = "* - A\n  - B\n* - 1\n  - 2") =>
+    render(`:::{list-table}\n${opts}\n\n${rows}\n:::`);
+
+test("list-table keeps its classes, with and without :align:", () => {
+    assert.match(listTable(":class: foo bar"), /<table class="foo bar">/);
+    assert.match(
+        listTable(":class: foo\n:align: center"),
+        /<table class="foo align-center">/,
+    );
+    assert.match(listTable(":align: center"), /<table class="align-center">/);
+    // mystmd's own `list-table` wraps the table in a `container`; that must
+    // not survive as a stray `<div>`.
+    assert.doesNotMatch(listTable(":class: foo"), /<div>/);
+});
+
+test("list-table supports the docutils options mystmd ignores", () => {
+    // `:stub-columns:` - leading cells become row headers, as in `csv-table`.
+    assert.match(
+        listTable(":stub-columns: 1"),
+        /<tbody><tr><th class="stub"><p>A<\/p><\/th><td><p>B<\/p><\/td>/,
+    );
+    // A stub cell inside the header carries both classes.
+    assert.match(
+        listTable(":stub-columns: 1\n:header-rows: 1"),
+        /<thead><tr><th class="stub head"><p>A<\/p><\/th>/,
+    );
+    // `:widths:` / `:width:`.
+    assert.match(
+        listTable(":widths: 35, 65"),
+        /<colgroup><col style="width: 35.0%"><col style="width: 65.0%"><\/colgroup>/,
+    );
+    assert.match(listTable(":width: 90%"), /<table style="width: 90%;">/);
+    // `:widths: auto` leaves the columns to the browser.
+    assert.doesNotMatch(listTable(":widths: auto"), /<colgroup>/);
+});
+
+test("list-table :header-rows: fills the thead", () => {
+    const html = listTable(":header-rows: 1");
+    assert.match(html, /<thead><tr><th class="head"><p>A<\/p><\/th>/);
+    assert.match(html, /<tbody><tr><td><p>1<\/p><\/td>/);
+});
+
+test("list-table takes :name: and its caption", () => {
+    const html = render(
+        ":::{list-table} Meine *Tabelle*\n:name: tab-x\n:class: foo\n\n" +
+            "* - A\n  - B\n:::",
+    );
+    assert.match(
+        html,
+        /<table class="foo" id="tab-x"><caption>Meine <em>Tabelle<\/em><\/caption>/,
+    );
+});
+
+test("list-table cells keep block content and short rows are padded", () => {
+    assert.match(
+        render(
+            ":::{list-table}\n\n* - erster Absatz\n\n    zweiter Absatz\n  - B\n:::",
+        ),
+        /<td><p>erster Absatz<\/p><p>zweiter Absatz<\/p><\/td>/,
+    );
+    // docutils pads a short row to the width of the widest one.
+    assert.match(
+        listTable("", "* - A\n  - B\n* - 1"),
+        /<tr><td><p>1<\/p><\/td><td><\/td><\/tr>/,
+    );
+});
+
+test("list-table reports a body that is not a list of lists", () => {
+    assert.throws(
+        () => render(":::{list-table}\n\nkein Liste\n:::"),
+        /single list/,
+    );
+    assert.throws(
+        () => render(":::{list-table}\n\n* A\n* B\n:::"),
+        /list of cells/,
+    );
+});
+
+test("an attribute line in front of a list-table reaches the table", () => {
+    const html = render(
+        "{.incremental-table-rows}\n\n:::{list-table}\n\n* - A\n  - B\n:::",
+    );
+    assert.match(html, /<table class="incremental-table-rows">/);
+});
+
+test("the `table` directive keeps its classes and caption", () => {
+    const html = render(
+        ":::{table} Titel\n:class: foo\n\n| A | B |\n|---|---|\n| 1 | 2 |\n:::",
+    );
+    assert.match(html, /<table class="foo"><caption>Titel<\/caption>/);
+    assert.doesNotMatch(html, /<div>/);
 });
 
 test("pipe table column alignment becomes text-align", () => {
@@ -135,10 +280,7 @@ test("code blocks use the docutils line-number markup", () => {
         html,
         /<pre class="code python copy-to-clipboard literal-block">/,
     );
-    assert.match(
-        html,
-        /<small class="ln">1<\/small><code data-lineno="1">/,
-    );
+    assert.match(html, /<small class="ln">1<\/small><code data-lineno="1">/);
     assert.doesNotMatch(html, /<pre[^>]*><code>/);
 });
 

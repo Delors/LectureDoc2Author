@@ -33,16 +33,7 @@ LectureDoc2-compatible HTML.
 
 It is the MyST counterpart of
 [reStructuredTextToLectureDoc2](https://github.com/Delors/reStructuredTextToLectureDoc2)
-and supports the same set of directives — with one deliberate difference:
-
-> **Math is rendered eagerly, at build time, with KaTeX.**
->
-> `rst2ld` defers typesetting to MathJax, which runs in the browser _after_
-> LectureDoc2 has laid the slides out. Overlays and incremental elements are
-> measured before the math has its final size, which leads to visible jumps and
-> mis-sized containers. Rendering with KaTeX during the build removes that whole
-> class of problems: the HTML LectureDoc2 receives already has its final shape,
-> and no math JavaScript is loaded at viewing time at all.
+and supports the same set of directives — with one deliberate difference: **Math is rendered eagerly, at build time, with KaTeX.** MathJax is no longer used.
 
 ## Install
 
@@ -436,6 +427,15 @@ content in `<span class="incremental">`, every entry of `ld.roles` becomes a
 class-applying role and every entry of `ld.code-roles` an inline code role
 (the counterpart of docutils' `.. role:: java(code)`). mystmd's own roles (`{kbd}`, `{sub}`, `{sup}`, `{abbr}`,
 `{del}`, `{sc}`, `{u}`, …) keep working.
+
+All of these accept inline attributes, so a role can be combined with an
+additional class or an id: `` {eng .incremental-4 #rail-1}`text` ``. A class
+that has no role of its own does not need one - mystmd's `{span}` role renders
+as a plain `<span>` and carries whatever is written in its attributes:
+
+```md
+{span .incremental-2}`m` {span .incremental-4}`e`
+```
 
 ### Roles in a directive argument
 

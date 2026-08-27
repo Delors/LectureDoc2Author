@@ -5,7 +5,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import { currentSource } from "../context.js";
+import { currentSource, directiveError } from "../context.js";
 import { makeClasses, parseInline, titleNode } from "../util.js";
 import { CODE_PRESENTATION_OPTIONS, buildCodeNode } from "./code-util.js";
 
@@ -201,12 +201,28 @@ const code = {
 /* -------------------------------------------------------------- csv-table */
 
 /**
+ * docutils' `single_char_or_whitespace_or_unicode` for the `:delim:` option:
+ * `space` and `tab` name a character that cannot be written literally in a
+ * directive option, `\u0009` its code point, anything else is taken as is.
+ */
+export function csvDelimiter(value) {
+    if (value === undefined || value === null) return ",";
+    const text = String(value).trim();
+    if (text === "space") return " ";
+    if (text === "tab") return "\t";
+    if (/^\\u[0-9a-fA-F]{4}$/.test(text)) {
+        return String.fromCodePoint(Number.parseInt(text.slice(2), 16));
+    }
+    return text.length > 0 ? text[0] : ",";
+}
+
+/**
  * Parses CSV text into rows of cells.
  *
  * Quoted cells may span several lines, which the LectureDoc2 sources rely on
  * for long table cells - splitting on `\n` first would tear those rows apart.
  */
-export function parseCsv(text) {
+export function parseCsv(text, delimiter = ",") {
     const rows = [];
     let row = [];
     let cell = "";
@@ -242,8 +258,12 @@ export function parseCsv(text) {
         if (c === '"') {
             quoted = true;
             hasContent = true;
-        } else if (c === ",") {
+        } else if (c === delimiter) {
             endCell();
+            // csv.Dialect.skipinitialspace: a space right behind the delimiter
+            // does not open the next field. With `:delim: space` this is what
+            // collapses the runs of spaces that align a table in the source.
+            while (text[i + 1] === " ") i += 1;
         } else if (c === "\n") {
             endRow();
         } else if (c !== "\r") {
@@ -256,8 +276,8 @@ export function parseCsv(text) {
 }
 
 /** Parses a single CSV line (used for the `:header:` option). */
-export function parseCsvLine(line) {
-    return parseCsv(line)[0] ?? [];
+export function parseCsvLine(line, delimiter = ",") {
+    return parseCsv(line, delimiter)[0] ?? [];
 }
 
 /**
@@ -297,6 +317,10 @@ const csvTable = {
         "align": { type: String },
         "file": { type: String, doc: "Read the values from this file." },
         "delim": { type: String },
+        "stub-columns": {
+            type: String,
+            doc: "Number of leading columns rendered as row headers.",
+        },
         "class": classOption,
         "name": nameOption,
     },
@@ -312,13 +336,30 @@ const csvTable = {
             body = fs.readFileSync(target, "utf-8");
         }
 
-        const rows = parseCsv(body);
+        // `:delim:` applies to the body *and* to the `:header:` option -
+        // docutils parses both with the same dialect.
+        const delimiter = csvDelimiter(options.delim);
+        const rows = parseCsv(body, delimiter);
         const headerRows = [];
-        if (options.header) headerRows.push(parseCsvLine(options.header));
+        if (options.header) {
+            headerRows.push(parseCsvLine(options.header, delimiter));
+        }
         const explicit =
             Number.parseInt(options["header-rows"] ?? "0", 10) || 0;
         for (let i = 0; i < explicit && rows.length > 0; i++) {
             headerRows.push(rows.shift());
+        }
+
+        // docutils pads short rows so that every row has the same number of
+        // columns; without it a trailing `000000f0: 00` row would end the
+        // table two cells wide.
+        const maxColumns = Math.max(
+            0,
+            ...headerRows.map((r) => r.length),
+            ...rows.map((r) => r.length),
+        );
+        for (const row of [...headerRows, ...rows]) {
+            while (row.length < maxColumns) row.push("");
         }
 
         // `:widths: auto` means "let the browser decide" - no colgroup.
@@ -332,11 +373,20 @@ const csvTable = {
                   )
                 : undefined;
 
+        // docutils renders the first `:stub-columns:` cells of every row as
+        // row headers (`<th class="stub">`), the header row included.
+        const stubColumns =
+            Number.parseInt(options["stub-columns"] ?? "0", 10) || 0;
+
         const toRow = (cells, header) => ({
             type: "tableRow",
-            children: cells.map((cell) => ({
+            children: cells.map((cell, column) => ({
                 type: "tableCell",
-                header,
+                header: header || column < stubColumns,
+                // A stub cell outside the header rows is a `<th class="stub">`
+                // without the `head` class docutils reserves for `<thead>`.
+                stubOnly: !header && column < stubColumns,
+                class: column < stubColumns ? ["stub"] : undefined,
                 // Cell content is parsed as MyST so inline markup keeps working.
                 children: ctx.parseMyst(cell).children ?? [],
             })),
@@ -362,6 +412,122 @@ const csvTable = {
     },
 };
 
+/* ------------------------------------------------------------- list-table */
+
+/**
+ * docutils' `.. list-table::` - a table written as a list of lists.
+ *
+ * mystmd brings a `list-table` of its own, but it only knows `:header-rows:`,
+ * `:class:` and `:align:`; `:widths:`, `:width:` and `:stub-columns:` are
+ * commented out in its source and are *ignored* - which is why a table with
+ * `:stub-columns: 1` came out unchanged. It also wraps the table in a
+ * `container` that has no counterpart in docutils' markup. The docutils
+ * behaviour is therefore rebuilt here, on top of the same helpers `csv-table`
+ * uses, so both directives support the same options and produce the same
+ * `ldTable`.
+ */
+const listTable = {
+    name: "list-table",
+    doc: "A table written as a list of lists.",
+    arg: { type: "myst", doc: "The table caption." },
+    options: {
+        "header-rows": {
+            type: String,
+            doc: "Number of leading rows that make up the header.",
+        },
+        "stub-columns": {
+            type: String,
+            doc: "Number of leading columns rendered as row headers.",
+        },
+        "widths": { type: String, doc: "Relative column widths, or `auto`." },
+        "width": {
+            type: String,
+            doc: "Width of the table; a bare number is taken as `px`.",
+        },
+        "align": { type: String },
+        "class": classOption,
+        "name": nameOption,
+    },
+    body: { type: "myst", required: true },
+    run(data) {
+        const options = data.options ?? {};
+        const body = data.body ?? [];
+        const outer = body.length === 1 && body[0].type === "list" && body[0];
+        if (!outer) {
+            throw directiveError(data, "the body must be a single list", {
+                hint: "A `list-table` is a list of rows; every row is a nested list of cells.",
+            });
+        }
+
+        const rows = (outer.children ?? []).map((item) => {
+            const nested = (item.children ?? [])[0];
+            if ((item.children ?? []).length !== 1 || nested?.type !== "list") {
+                throw directiveError(
+                    data,
+                    "every row must be a list of cells",
+                    {
+                        hint: "A row is a list item that contains nothing but a nested list:\n\n* - first cell\n  - second cell",
+                    },
+                );
+            }
+            return (nested.children ?? []).map((cell) => cell.children ?? []);
+        });
+
+        // docutils pads short rows so that every row has the same number of
+        // columns.
+        const maxColumns = Math.max(0, ...rows.map((r) => r.length));
+        for (const row of rows) {
+            while (row.length < maxColumns) row.push([]);
+        }
+
+        const headerRowCount =
+            Number.parseInt(options["header-rows"] ?? "0", 10) || 0;
+        const stubColumns =
+            Number.parseInt(options["stub-columns"] ?? "0", 10) || 0;
+
+        // `:widths: auto` means "let the browser decide" - no colgroup.
+        const widths =
+            options.widths && options.widths !== "auto"
+                ? columnPercentages(
+                      options.widths
+                          .split(/[\s,]+/)
+                          .filter(Boolean)
+                          .map(Number),
+                  )
+                : undefined;
+
+        const toRow = (cells, header) => ({
+            type: "tableRow",
+            children: cells.map((children, column) => ({
+                type: "tableCell",
+                header: header || column < stubColumns,
+                // A stub cell outside the header rows is a `<th class="stub">`
+                // without the `head` class docutils reserves for `<thead>`.
+                stubOnly: !header && column < stubColumns,
+                class: column < stubColumns ? ["stub"] : undefined,
+                children,
+            })),
+        });
+
+        return [
+            {
+                type: "ldTable",
+                class: makeClasses(options.class),
+                identifier: options.name,
+                align: options.align,
+                widths,
+                width: lengthOrPercentage(options.width),
+                children: [
+                    ...(data.arg ? [titleNode(data.arg, "caption")] : []),
+                    ...rows.map((cells, index) =>
+                        toRow(cells, index < headerRowCount),
+                    ),
+                ],
+            },
+        ];
+    },
+};
+
 export const blockDirectives = [
     container,
     epigraph,
@@ -369,4 +535,5 @@ export const blockDirectives = [
     rubric,
     code,
     csvTable,
+    listTable,
 ];
