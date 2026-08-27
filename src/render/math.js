@@ -1,11 +1,4 @@
 /* Eager (build time) math rendering with KaTeX.
- *
- * reStructuredTextToLectureDoc2 defers typesetting to MathJax, which runs in
- * the browser *after* LectureDoc2 has laid out the slides. That is a problem
- * for overlays/incremental elements, because their geometry is measured before
- * the math has its final size. Rendering with KaTeX at build time removes the
- * whole class of problems: the HTML that LectureDoc2 receives already contains
- * the final markup.
  */
 
 import katex from "katex";
