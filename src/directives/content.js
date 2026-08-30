@@ -7,7 +7,6 @@ import path from "node:path";
 
 import {
     currentFrontmatterOffset,
-    currentGlobals,
     currentIncludeStack,
     currentParseNested,
     currentRoot,
@@ -165,7 +164,6 @@ const includeSvg = {
         class: classOption,
         name: nameOption,
         alt: { type: String },
-        global: { type: Boolean, doc: "Collect into `<ld-svg-globals>`." },
     },
     body: { type: String },
     run(data) {
@@ -184,36 +182,10 @@ const includeSvg = {
             );
         }
 
-        if (data.options?.global) {
-            const forbidden = [
-                "width",
-                "height",
-                "alt",
-                "name",
-                "class",
-            ].filter((o) => data.options?.[o] !== undefined);
-            if (forbidden.length > 0) {
-                throw directiveError(
-                    data,
-                    `:global: cannot be combined with ${forbidden
-                        .map((o) => `:${o}:`)
-                        .join(", ")}`,
-                    {
-                        hint:
-                            ":global: only collects the file's definitions into <ld-svg-globals>;\n" +
-                            "nothing is drawn here, so there is nothing for those options to apply to.",
-                    },
-                );
-            }
-            currentGlobals().addSvg(svgPath, svg);
-            return [];
-        }
-
         /*
-         * Not `required: true` in the option spec, tempting as that is:
-         * `:global:` takes neither, and mystmd's `required` cannot be made
-         * conditional. So the check lives here - but it says what the options
-         * are *for*, which is the part that saves the author a trip to the
+         * Checked here rather than with `required: true` in the option spec,
+         * for the sake of the message: this one says what the options are
+         * *for*, which is the part that saves the author a trip to the
          * documentation.
          */
         const missing = ["width", "height"].filter(
@@ -228,7 +200,7 @@ const includeSvg = {
                 {
                     hint:
                         "They give the SVG its box on the slide, e.g. `:width: 1600` and `:height: 900`.\n" +
-                        "Use `:global:` instead if the file only holds definitions to be referenced elsewhere.",
+                        "A file that only holds definitions for other SVGs belongs in `ld.include-globals`.",
                 },
             );
         }

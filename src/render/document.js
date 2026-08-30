@@ -20,8 +20,8 @@ function metaTag(name, content, extra = "") {
  *   - `theme`            theme css relative to LectureDoc2's root
  *   - `katexCss`         href of the KaTeX stylesheet (or `undefined`)
  *   - `modules`          list of module script urls
- *   - `svgGlobals`       list of raw SVG fragments
- *   - `svgDefs`/`svgStyle`
+ *   - `styleBlocks`      CSS fragments, each wrapped in its own `<style>`
+ *   - `globalBlocks`     markup fragments, put verbatim into `<ld-globals>`
  *   - `body`             the rendered slides
  */
 export function buildDocument(options) {
@@ -33,9 +33,8 @@ export function buildDocument(options) {
         theme,
         katexCss,
         modules = [],
-        svgGlobals = [],
-        svgDefs,
-        svgStyle,
+        styleBlocks = [],
+        globalBlocks = [],
         body = "",
     } = options;
 
@@ -76,24 +75,26 @@ export function buildDocument(options) {
         );
     }
 
-    const globals = [];
-    if (svgDefs) {
-        globals.push(
-            `<svg xmlns="http://www.w3.org/2000/svg" class="svg-global-defs"><defs>${svgDefs}</defs></svg>`,
-        );
+    /*
+     * Last in the head, so that a deck's own CSS comes after `ld.css`, the
+     * theme and KaTeX and wins a specificity tie against them - which is where
+     * the retired `ld.svg-style` used to sit (in the *body*, hence even later)
+     * and what decks written against it rely on.
+     */
+    for (const style of styleBlocks) {
+        head.push(`<style>${style}</style>`);
     }
-    if (svgStyle) {
-        globals.push(
-            `<svg xmlns="http://www.w3.org/2000/svg" class="svg-global-style"><style>${svgStyle}</style></svg>`,
-        );
-    }
-    globals.push(...svgGlobals);
 
     const bodyParts = [];
-    if (globals.length > 0) {
-        bodyParts.push(
-            `<ld-svg-globals>${globals.join("\n")}</ld-svg-globals>`,
-        );
+    if (globalBlocks.length > 0) {
+        /*
+         * `<ld-globals>` is hidden by LectureDoc2's `behavior.css` - zero
+         * sized, fixed and `overflow: hidden`, but deliberately *not*
+         * `display: none`, because `<defs>` that are referenced from elsewhere
+         * by `url(#id)` would then no longer render. Whatever an author puts
+         * here is therefore invisible without having to say so itself.
+         */
+        bodyParts.push(`<ld-globals>${globalBlocks.join("\n")}</ld-globals>`);
     }
     bodyParts.push("<template>");
     bodyParts.push(body);

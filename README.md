@@ -103,7 +103,7 @@ building 13 document(s):
   DHBW_W3WI-110.1-Web-Programmierung/folien.de.md.html (64 ms)
   [error] shared/snippets/intro.de.md:12:1: include-svg: :width: is required
           They give the SVG its box on the slide, e.g. `:width: 1600` and `:height: 900`.
-          Use `:global:` instead if the file only holds definitions to be referenced elsewhere.
+          A file that only holds definitions for other SVGs belongs in `ld.include-globals`.
           included from web-html/folien.de.md:30
   cv/folien.de.md.html (16 ms)
   …
@@ -214,6 +214,51 @@ ld:
 ---
 ```
 
+An unknown key under `ld:` is reported as a warning, with a suggestion where
+there is an obvious one. A setting that is merely ignored is the worst way for
+one to fail — the build succeeds and the deck is quietly missing whatever the
+key was meant to do.
+
+### Deck specific CSS and markup
+
+Four keys, two pairs. `styles` and `globals` take their content inline,
+`include-styles` and `include-globals` take a **list of files** whose content
+is copied into the generated HTML **verbatim**:
+
+```yaml
+ld:
+    include-styles: # -> <style> in the <head>, one per file
+        - drawings/letter_frequency.css
+    styles: | # -> <style> in the <head>, after the files
+        .letterfreq .bar { fill: var(--accent-color); }
+    include-globals: # -> <ld-globals> in the <body>, verbatim
+        - drawings/arrow-defs.svg
+    globals: | # -> <ld-globals>, after the files
+        <script type="module">…</script>
+```
+
+| | wrapped in | resolved against |
+| --- | --- | --- |
+| `styles` / `include-styles` | `<style>` in the `<head>` | the document (`myst.yml`: the project root) |
+| `globals` / `include-globals` | nothing | the document (`myst.yml`: the project root) |
+
+The `include-*` list comes first and the inline counterpart after it, whatever
+order the keys are written in — the merge with `myst.yml` does not preserve the
+order *between* two keys, only *within* a list. A deck's CSS is emitted last in
+the `<head>`, so it wins a specificity tie against `ld.css` and the theme.
+
+`globals` is markup and is **not** wrapped: an SVG with `<defs>`, a `<style>`,
+a one-off `<script>` each have to bring their own element. `<ld-globals>` is
+zero-sized, fixed and `overflow: hidden` (but never `display: none`, which
+would stop `url(#id)` references from rendering), so whatever is put there is
+invisible without the author having to say so. A `<script>` there runs while
+the document is being parsed — before the slides exist and before `ld.js`, which
+is a module and therefore deferred; use `type="module"` or `DOMContentLoaded`
+if it needs the DOM.
+
+A list in a deck's frontmatter **replaces** the one from `myst.yml`, it does
+not extend it. Project-wide styling belongs in `ld.theme`.
+
 ## Secrets and password files
 
 The `master-password` (required for encrypted solutions and presenter notes)
@@ -323,13 +368,14 @@ it simply is not a paragraph. In running text, write it as inline code:
 | `compound`              | `<div class="compound">`                      | `:theme:`                                                |
 | `module`                | `<ld-module>`                                 | pulls in the configured JS module                        |
 | `popover`               | `<button popovertarget>` + `<dialog popover>` |                                                          |
-| `include-svg`           | inline `<svg>`                                | `:global:` collects into `<ld-svg-globals>`              |
+| `include-svg`           | inline `<svg>`                                | `:width:` and `:height:` are required                    |
 | `global-information`    | `<ld-global-information>`                     | `:type:`, `:symbol:`, `:embed:`                          |
 | `exercise` / `solution` | `<div class="ld-exercise">`                   | solutions are AES-GCM encrypted                          |
 | `presenter-note`        | `<ld-presenter-note encrypted>`               | needs a master password                                  |
 | `source`                | `<a>` to the source document                  | `:prefix:`, `:suffix:`, `:path:`                         |
 | `include`               | –                                             | includes and parses another MyST file                    |
 | `literalinclude`        | `<pre class="code …">`                        | shows (part of) an external file as code                 |
+| `raw`                   | verbatim HTML                                 | `{raw} html`; unlike a raw HTML block, keeps blank lines |
 | `container`             | `<div class="…">`                             | docutils' `.. container::`                               |
 | `rubric`                | `<p class="rubric">`                          | informal heading                                         |
 | `code` / `code-block`   | `<pre class="code …">`                        | `:number-lines:`, `:emphasize-lines:`                    |
@@ -379,6 +425,29 @@ def min_coins(n, coins): ...
 
 `:emphasize-lines:` puts `class="emphasized"` on the affected `<code>` line and
 its gutter entry; LectureDoc2's `code.css` styles both.
+
+### Raw HTML
+
+A raw HTML *block* in Markdown ends at the **first blank line** (CommonMark
+§4.6): everything after it is parsed as Markdown again and ends up escaped in
+the output. That makes plain HTML unusable for anything long — an inline `<svg>`
+above all. `{raw} html` has no such limit and passes its body through
+unchanged:
+
+````md
+```{raw} html
+<div class="legend">
+  <b>A</b>
+
+  <i>B</i>
+</div>
+```
+````
+
+`{raw:latex}` and `{raw:typst}` parse but contribute nothing here; any other
+format fails the build rather than silently dropping the block. For an inline
+`<svg>` prefer [`include-svg`](#directives) — the drawing then lives in a real
+`.svg` file that an editor can open.
 
 ### Admonitions
 

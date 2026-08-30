@@ -53,18 +53,40 @@ function loadYaml(text, { file, what, lineOffset = 0 } = {}) {
  */
 export const DEFAULT_LD_CONFIG = {
     /** Path to LectureDoc2's `src` directory, relative to the project root. */
-    path: "LectureDoc2/src",
+    "path": "LectureDoc2/src",
     /** Theme css, relative to LectureDoc2's `src` directory. */
-    theme: undefined,
+    "theme": undefined,
     /**
      * `{ name: url }`; a `module` directive/meta entry pulls in the url.
      * Local urls are relative to the project root.
      */
-    modules: {},
+    "modules": {},
     /** Custom inline roles: `{ name: "css-class" }`. */
-    roles: {},
+    "roles": {},
+    /*
+     * Deck specific CSS and markup.
+     *
+     *   styles           inline CSS, wrapped in a `<style>` in the `<head>`
+     *   include-styles   files whose content is inlined the same way
+     *   globals          inline markup, put verbatim into `<ld-globals>`
+     *   include-globals  files whose content is put there verbatim
+     *
+     * The two `include-*` lists come first, so that the inline counterpart can
+     * override them; within one list the order is the order written. `styles`
+     * is CSS and is therefore wrapped, `globals` is markup and is not - an SVG
+     * with `<defs>`, a `<style>`, a one-off `<script>` all have to bring their
+     * own element.
+     *
+     * A path is resolved relative to the *document* when it stands in a
+     * document's frontmatter, and relative to the project root when it stands
+     * in `myst.yml` (`resolveConfig` makes those absolute while merging).
+     */
+    "styles": undefined,
+    "include-styles": [],
+    "globals": undefined,
+    "include-globals": [],
     /** KaTeX configuration. */
-    katex: {
+    "katex": {
         /**
          * Directory (relative to the project root) the assets are copied to.
          *
@@ -88,17 +110,63 @@ export const DEFAULT_LD_CONFIG = {
      * project root and is silently ignored when missing, so a fresh clone
      * still builds (only encrypted content then fails with a clear error).
      */
-    secrets: "shared/secrets/ld-secrets.yml",
+    "secrets": "shared/secrets/ld-secrets.yml",
     /**
      * Where the collected exercise passwords are written to.
      *   - `true` (default): `<output>.passwords.json` next to the slides
      *   - a path: that file (relative to the project root)
      *   - `false`: do not write them
      */
-    passwords: true,
+    "passwords": true,
     /** Pretty-print the generated HTML. */
-    formatHtml: false,
+    "formatHtml": false,
 };
+
+/** `ld` keys whose value is a list of paths. */
+export const LD_PATH_LIST_KEYS = ["include-styles", "include-globals"];
+
+/**
+ * Every `ld:` key the toolchain reads. Anything else is a typo, and a typo in
+ * a key that is merely ignored is a silent failure - `ld.module` instead of
+ * `ld.requiredModules` cost an afternoon once. `checkLdKeys` turns them into
+ * warnings.
+ *
+ * `frontmatterMeta` accepts every meta key in camelCase as well
+ * (`ld?.[key] ?? ld?.[toCamel(key)]`), so both spellings are legal here.
+ */
+export const KNOWN_LD_KEYS = [
+    ...Object.keys(DEFAULT_LD_CONFIG),
+    "code-roles",
+    "master-password",
+    "requiredModules",
+    // `LD_META_KEYS` in build.js - kept in sync by `test/config-keys.test.js`.
+    "id",
+    "first-slide",
+    "slide-dimensions",
+    "ld-show-light-table",
+    "ld-show-continuous-view",
+    "ld-show-help",
+];
+
+/** Keys that were removed, with what to write instead. */
+export const RETIRED_LD_KEYS = {
+    "svg-style": "`ld.svg-style` has been replaced",
+    "svg-defs": "`ld.svg-defs` has been replaced",
+};
+
+export const RETIRED_HINT =
+    "Inline CSS goes to `ld.styles`, a CSS file to `ld.include-styles`.\n" +
+    "Inline markup goes to `ld.globals`, a file to `ld.include-globals` - " +
+    "verbatim, so\nit has to bring its own `<svg>`/`<style>`/`<script>` element.";
+
+export function toCamel(key) {
+    return key.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+}
+
+/** Reads an `ld` value, accepting the kebab-case and the camelCase spelling. */
+export function ldGet(ld, key) {
+    return ld?.[key] ?? ld?.[toCamel(key)];
+}
 
 function isPlainObject(value) {
     return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -174,6 +242,32 @@ export function loadSecrets(projectRoot, relativePath) {
  */
 const DOCUMENT_OVERRIDES = ["master-password", "masterPassword"];
 
+/*
+ * `include-styles` / `include-globals` are resolved relative to the document,
+ * which is what an author writing them into a deck's frontmatter expects - and
+ * which is meaningless for the same key in `myst.yml`, where there is no
+ * document. `deepMerge` destroys the provenance, so the project level is made
+ * absolute *before* merging; `path.resolve(documentDir, entry)` afterwards then
+ * leaves those entries alone and only resolves the relative ones, which by
+ * construction are the ones from the frontmatter.
+ */
+function absolutePathLists(projectLd, projectRoot) {
+    if (!isPlainObject(projectLd)) return projectLd ?? {};
+    const out = { ...projectLd };
+    for (const key of LD_PATH_LIST_KEYS) {
+        for (const spelling of [key, toCamel(key)]) {
+            const value = out[spelling];
+            if (!Array.isArray(value)) continue;
+            out[spelling] = value.map((entry) =>
+                typeof entry === "string"
+                    ? path.resolve(projectRoot, entry)
+                    : entry,
+            );
+        }
+    }
+    return out;
+}
+
 /** Merges project defaults, project `ld:` settings and document frontmatter. */
 export function resolveConfig({
     projectConfig = {},
@@ -183,7 +277,10 @@ export function resolveConfig({
     const project = projectConfig.project ?? {};
     const documentLd = frontmatter.ld ?? {};
     let ld = deepMerge(
-        deepMerge(DEFAULT_LD_CONFIG, project.ld ?? {}),
+        deepMerge(
+            DEFAULT_LD_CONFIG,
+            absolutePathLists(project.ld, projectRoot),
+        ),
         documentLd,
     );
     // Secrets win over `myst.yml` so that a checked-in placeholder there cannot

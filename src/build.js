@@ -9,6 +9,7 @@ import { createParseOptions, parse } from "./parse.js";
 import { projectHref, relativeHref, vendorKatex } from "./assets.js";
 import {
     findMystConfig,
+    ldGet,
     loadMystConfig,
     resolveConfig,
     splitFrontmatter,
@@ -19,7 +20,11 @@ import {
     nodeError,
     withContext,
 } from "./context.js";
-import { collectDiagnostics, hasFatalDiagnostics } from "./diagnostics.js";
+import {
+    checkLdKeys,
+    collectDiagnostics,
+    hasFatalDiagnostics,
+} from "./diagnostics.js";
 import { createRenderer } from "./render/index.js";
 import { buildDocument } from "./render/document.js";
 import { renderMathEagerly } from "./render/math.js";
@@ -31,7 +36,7 @@ import {
 } from "./transforms/index.js";
 
 /** Meta tags that LectureDoc2 evaluates; they are copied verbatim. */
-const LD_META_KEYS = [
+export const LD_META_KEYS = [
     "id",
     "first-slide",
     "slide-dimensions",
@@ -75,6 +80,44 @@ function toCamel(key) {
 }
 
 /**
+ * Reads the files listed under an `ld` key, in the order they are written.
+ *
+ * A relative entry is resolved against the document's directory; entries from
+ * `myst.yml` are already absolute (see `absolutePathLists` in `config.js`).
+ *
+ * @returns {{contents: string[], paths: string[]}}
+ */
+function readListedFiles(ld, key, documentDir) {
+    const value = ldGet(ld, key);
+    if (value === undefined) return { contents: [], paths: [] };
+    const entries = Array.isArray(value) ? value : [value];
+    const contents = [];
+    const paths = [];
+    for (const entry of entries) {
+        if (typeof entry !== "string") {
+            throw new DirectiveError(
+                `ld.${key}: every entry has to be a path, found ${typeof entry}`,
+            );
+        }
+        const file = path.resolve(documentDir, entry);
+        paths.push(file);
+        try {
+            contents.push(fs.readFileSync(file, "utf-8"));
+        } catch (error) {
+            throw new DirectiveError(
+                `ld.${key}: cannot read "${entry}": ${error.code ?? error.message}`,
+                {
+                    hint:
+                        `Resolved to ${file}.\nA relative path is relative to ` +
+                        "the document; in `myst.yml` it is relative to the project root.",
+                },
+            );
+        }
+    }
+    return { contents, paths };
+}
+
+/**
  * The generated file keeps the source name and only *appends* `.html`
  * (`folien.de.md` -> `folien.de.md.html`), mirroring what
  * reStructuredTextToLectureDoc2 does (`folien.de.rst.html`). That makes it
@@ -91,7 +134,7 @@ export function outputNameFor(source) {
  *
  * @param {string} source absolute or cwd-relative path of the `.md` file
  * @param {object} options `out`, `config`, `formatHtml`
- * @returns {Promise<{html: string, outPath: string, passwords: object[], warnings: object[]}>}
+ * @returns {Promise<{html: string, outPath: string, passwords: object[], dependencies: string[], warnings: object[]}>}
  */
 export async function convertFile(source, options = {}) {
     const sourcePath = path.resolve(source);
@@ -121,6 +164,18 @@ export async function convertFile(source, options = {}) {
             frontmatterOffset: split.offset,
         });
     }
+}
+
+function ldKeyFindings(ld, file) {
+    if (!ld || !file) return [];
+    return checkLdKeys(ld).map((finding) => ({
+        severity: "warn",
+        ruleId: "ld-config",
+        error: new DirectiveError(finding.message, {
+            file,
+            hint: finding.hint,
+        }),
+    }));
 }
 
 async function convertDocument(sourcePath, split, options = {}) {
@@ -154,7 +209,7 @@ async function convertDocument(sourcePath, split, options = {}) {
     const parseNested = (text) => parse(text, parseOptions);
     const contextOptions = { root: projectRoot, parseNested };
 
-    const { result: tree, globals } = withContext(
+    const { result: tree } = withContext(
         sourcePath,
         () => parse(body, parseOptions),
         { ...contextOptions, frontmatterOffset },
@@ -236,6 +291,32 @@ async function convertDocument(sourcePath, split, options = {}) {
         .filter((url) => typeof url === "string")
         .map((url) => projectHref(projectRoot, outDir, url));
 
+    /* -------------------------------------------------- styles and globals */
+
+    /*
+     * The `include-*` lists come first so that the inline counterpart can
+     * override them, and each entry keeps its own `<style>` - one file, one
+     * block, which is what makes a rule findable in the devtools.
+     */
+    const documentDir = path.dirname(sourcePath);
+    const includedStyles = readListedFiles(ld, "include-styles", documentDir);
+    const includedGlobals = readListedFiles(ld, "include-globals", documentDir);
+    const inlineStyles = ldGet(ld, "styles");
+    const inlineGlobals = ldGet(ld, "globals");
+
+    const styleBlocks = [...includedStyles.contents];
+    if (inlineStyles) styleBlocks.push(String(inlineStyles));
+    const globalBlocks = [...includedGlobals.contents];
+    if (inlineGlobals) globalBlocks.push(String(inlineGlobals));
+
+    /*
+     * Everything this document was built from, beyond its own source. Nothing
+     * consumes it yet - `planBuild` still calls a deck stale by the mtime of
+     * the `.md` alone - but the information has to be collected where it is
+     * known, and this is that place.
+     */
+    const dependencies = [...includedStyles.paths, ...includedGlobals.paths];
+
     /* ------------------------------------------------------------- output */
 
     const meta = frontmatterMeta({ ...resolved, ...frontmatter }, ld);
@@ -263,9 +344,8 @@ async function convertDocument(sourcePath, split, options = {}) {
         theme: ld.theme,
         katexCss,
         modules,
-        svgGlobals: globals.svgs.map((s) => s.svg),
-        svgDefs: ld["svg-defs"],
-        svgStyle: ld["svg-style"],
+        styleBlocks,
+        globalBlocks,
         body: renderer.render(tree),
     });
 
@@ -322,6 +402,15 @@ async function convertDocument(sourcePath, split, options = {}) {
      * tests and for anyone using `convertFile` as a library.
      */
     const diagnostics = [
+        /*
+         * A key the toolchain does not read does nothing, and does it
+         * silently - which is the worst way for a setting to fail. Both levels
+         * are checked, each attributed to the file it is written in; a typo in
+         * `myst.yml` is worth repeating per document, because it breaks every
+         * one of them.
+         */
+        ...ldKeyFindings(frontmatter.ld, sourcePath),
+        ...ldKeyFindings(projectConfig.project?.ld, configPath),
         ...collectDiagnostics(vfile, {
             file: sourcePath,
             frontmatterOffset,
@@ -351,6 +440,7 @@ async function convertDocument(sourcePath, split, options = {}) {
         outPath,
         passwords,
         passwordFiles,
+        dependencies,
         warnings: mathWarnings,
         messages: vfile.messages,
         diagnostics,

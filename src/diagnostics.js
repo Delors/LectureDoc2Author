@@ -20,6 +20,12 @@
 import { defaultDirectives } from "myst-directives";
 
 import { DirectiveError } from "./context.js";
+import {
+    KNOWN_LD_KEYS,
+    RETIRED_HINT,
+    RETIRED_LD_KEYS,
+    toCamel,
+} from "./config.js";
 import { directives as ldDirectives } from "./directives/index.js";
 
 function namesOf(spec) {
@@ -126,6 +132,46 @@ function hintFor(reason) {
         return "The argument goes on the same line as the directive, after the closing brace.";
     }
     return undefined;
+}
+
+/**
+ * Finds `ld:` keys the toolchain does not read.
+ *
+ * A setting that is merely ignored is the worst way for one to fail: the build
+ * succeeds and the deck is quietly missing what the key was supposed to do -
+ * `ld.module` instead of `ld.requiredModules` is the known case. Retired keys
+ * get a message that names their replacement, everything else the same
+ * did-you-mean treatment as an unknown directive.
+ *
+ * @returns {{key: string, message: string, hint: string|undefined}[]}
+ */
+export function checkLdKeys(ld = {}) {
+    const known = [...KNOWN_LD_KEYS, ...KNOWN_LD_KEYS.map(toCamel)];
+    const knownSet = new Set(known);
+    const findings = [];
+    for (const key of Object.keys(ld)) {
+        if (knownSet.has(key)) continue;
+        if (key in RETIRED_LD_KEYS) {
+            findings.push({
+                key,
+                message: RETIRED_LD_KEYS[key],
+                hint: RETIRED_HINT,
+            });
+            continue;
+        }
+        const candidates = suggest(key, known);
+        findings.push({
+            key,
+            message: `unknown \`ld\` setting: ${key}`,
+            hint:
+                candidates.length > 0
+                    ? `Did you mean ${candidates
+                          .map((c) => `\`${c}\``)
+                          .join(" or ")}?`
+                    : undefined,
+        });
+    }
+    return findings;
 }
 
 /**

@@ -24,20 +24,6 @@
 
 let context = null;
 
-class Globals {
-    constructor() {
-        /** @type {{path: string, svg: string}[]} */
-        this.svgs = [];
-        this.svgPaths = new Set();
-    }
-
-    addSvg(svgPath, svg) {
-        if (this.svgPaths.has(svgPath)) return;
-        this.svgPaths.add(svgPath);
-        this.svgs.push({ path: svgPath, svg });
-    }
-}
-
 /**
  * Runs `fn` with `source` as the current document. Returns `fn`'s result.
  *
@@ -66,10 +52,9 @@ export function withContext(
         frontmatterOffset,
         parseNested,
         includeStack: [],
-        globals: new Globals(),
     };
     try {
-        return { result: fn(), globals: context.globals };
+        return { result: fn() };
     } finally {
         context = previous;
     }
@@ -79,9 +64,8 @@ export function withContext(
  * Runs `fn` with `file` as the current document, as an *include* of the file
  * that is current now.
  *
- * Deliberately not `withContext`: the globals and the project root belong to
- * the outer document and have to survive, only the source and the line offset
- * change. `line` is where the `{include}` sits in the including file, so that
+ * Deliberately not `withContext`: the project root belongs to the outer
+ * document and has to survive, only the source and the line offset change. `line` is where the `{include}` sits in the including file, so that
  * an error inside the included file can say where it was pulled in.
  */
 export function withIncludedSource(file, { line } = {}, fn) {
@@ -118,11 +102,6 @@ export function currentSource() {
 export function currentRoot() {
     if (!context) throw new Error("no parsing context");
     return context.root;
-}
-
-export function currentGlobals() {
-    if (!context) throw new Error("no parsing context");
-    return context.globals;
 }
 
 /** How many lines of frontmatter were cut off the text being parsed. */
@@ -313,5 +292,3 @@ export function markOrigin(nodes, origin) {
     }
     return nodes;
 }
-
-export { Globals };

@@ -15,6 +15,7 @@ import { u } from "unist-builder";
 import { all } from "./hast-compat.js";
 
 import { INLINE_TYPES, classAttr, escapeHtml, mergeClasses } from "../util.js";
+import { nodeError } from "../context.js";
 import { highlight } from "./highlight.js";
 import { label } from "../i18n.js";
 
@@ -157,6 +158,43 @@ export function buildHandlers(ctx) {
 
     const thematicBreak = (h, node) =>
         h(node, "hr", { class: cls(node.class) });
+
+    /*
+     * `{raw} html` - the escape hatch for markup Markdown cannot express.
+     *
+     * A raw HTML *block* in Markdown ends at the first blank line (CommonMark
+     * §4.6), so a long snippet - an inline SVG above all - loses everything
+     * after it: the remainder is parsed as Markdown and arrives escaped. The
+     * directive keeps its body verbatim, and this handler is what puts it into
+     * the document unescaped.
+     *
+     * `{raw:latex}` / `{raw:typst}` produce the same node type for their own
+     * export targets; they contribute nothing to HTML and are dropped. Any
+     * other format is a typo (`{raw} htm`) - and a typo that silently deletes
+     * a block of markup is exactly the kind of finding this toolchain reports
+     * rather than swallows.
+     */
+    const HTML_RAW_FORMATS = new Set(["html", "xml"]);
+    const NON_HTML_RAW_FORMATS = new Set(["tex", "latex", "typst", "typ"]);
+
+    const rawNode = (h, node) => {
+        const format = (node.lang ?? "").toLowerCase();
+        if (NON_HTML_RAW_FORMATS.has(format)) return [];
+        if (!HTML_RAW_FORMATS.has(format)) {
+            throw nodeError(
+                node,
+                format === ""
+                    ? "raw: the format is missing"
+                    : `raw: unsupported format "${node.lang}"`,
+                {
+                    hint:
+                        "Write ```{raw} html to pass the body through verbatim.\n" +
+                        "`latex`/`typst` are accepted and ignored; they only apply to those exports.",
+                },
+            );
+        }
+        return raw(node.value ?? "");
+    };
 
     /**
      * Literal blocks, in the shape docutils' HTML5 writer produces:
@@ -862,6 +900,8 @@ export function buildHandlers(ctx) {
         paragraph,
         blockquote,
         thematicBreak,
+        // mystmd's `{raw}` directive; `raw` here is the *node type*.
+        raw: rawNode,
         code,
         inlineCode,
         link,

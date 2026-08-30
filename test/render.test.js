@@ -169,3 +169,23 @@ test("svg images are embedded via <object>", () => {
 test("stories become ld-story", () => {
     assert.match(render(":::{story}\n- a\n:::"), /<ld-story>/);
 });
+
+test("{raw} html passes its body through verbatim, blank lines included", () => {
+    const html = render(
+        '```{raw} html\n<div class="a">\n  <b>x</b>\n\n  <i>y</i>\n</div>\n```',
+    );
+    assert.match(html, /<div class="a">\n  <b>x<\/b>\n\n  <i>y<\/i>\n<\/div>/);
+});
+
+test("{raw} for a non-HTML target contributes nothing", () => {
+    const html = render("```{raw:latex}\n\\emph{x}\n```");
+    assert.doesNotMatch(html, /emph/);
+});
+
+test("{raw} with a missing or unknown format is an error", () => {
+    assert.throws(() => render("```{raw}\n<b>x</b>\n```"), /format is missing/);
+    assert.throws(
+        () => render("```{raw} htm\n<b>x</b>\n```"),
+        /unsupported format "htm"/,
+    );
+});
