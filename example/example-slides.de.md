@@ -20,6 +20,8 @@ ld:
 Dieser Foliensatz demonstriert {{ ld }} zusammen mit LectureDoc2Author.
 :::
 
+
+
 # Admonitions {.center-child-elements}
 
 :::{hint}
@@ -41,6 +43,8 @@ Ein Monoid in der Kategorie der Endofunktoren.
 Die generische Admonition hat kein Theme.
 :::
 
+
+
 # Layout: Deck und Karten
 
 ::::{deck}
@@ -56,6 +60,8 @@ Zweite Karte – `incremental`.
 :::
 
 ::::
+
+
 
 # Layout: Grid und Zellen
 
@@ -122,6 +128,8 @@ Sehr langer Inhalt …
 
 ::::
 
+
+
 # Übungen
 
 ::::{exercise} Fibonacci
@@ -134,7 +142,6 @@ Siehe die Code-Folie.
 :::
 
 :::{hint}
-
 Das Masterpasswort ist: "beispiel-master" und das Passwort für diese Übung ist: "lösung-eins". 
 :::
 
@@ -143,6 +150,8 @@ Das Masterpasswort ist: "beispiel-master" und das Passwort für diese Übung ist
 :::{presenter-note}
 Nur in der Präsentationsansicht sichtbar – und verschlüsselt.
 :::
+
+
 
 # Popover, Compound und Quelle
 
