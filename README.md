@@ -366,7 +366,7 @@ it simply is not a paragraph. In running text, write it as inline code:
 | `deck` / `card`         | `<ld-deck>` / `<ld-card>`                     | cards after the first get `incremental`                  |
 | `grid` / `cell`         | `<ld-grid>` / `<ld-cell>`                     | `:align:`, `:theme:`                                     |
 | `compound`              | `<div class="compound">`                      | `:theme:`                                                |
-| `module`                | `<ld-module>`                                 | pulls in the configured JS module                        |
+| `module`                | `<ld-module>`                                 | pulls in the configured JS module; `:source:`            |
 | `popover`               | `<button popovertarget>` + `<dialog popover>` |                                                          |
 | `include-svg`           | inline `<svg>`                                | `:width:` and `:height:` are required                    |
 | `global-information`    | `<ld-global-information>`                     | `:type:`, `:symbol:`, `:embed:`                          |
@@ -425,6 +425,49 @@ def min_coins(n, coins): ...
 
 `:emphasize-lines:` puts `class="emphasized"` on the affected `<code>` line and
 its gutter entry; LectureDoc2's `code.css` styles both.
+
+### Module configuration
+
+`{module}` names a JavaScript module (from `modules` in `myst.yml`) and carries
+the configuration that module needs. That configuration is **text**: every
+component reads it with `element.textContent`, so the body is escaped on output
+and can be written plainly — no `&lt;` anywhere:
+
+````md
+```{module} embedded-iframe
+<iframe width="100%" srcdoc='
+    <html>
+        <head>{{ld-embedded-iframe.head.frag.html}}</head>
+        <body><p>Hello</p></body>
+    </html>
+'>
+    iframes are not supported
+</iframe>
+```
+````
+
+A body of that size does not belong in the middle of a deck, though. `:source:`
+reads it from a file next to the document instead — a real `.html` (or `.json`,
+or whatever the module wants) with syntax highlighting in the editor, that can
+be opened and tested on its own:
+
+````md
+```{module} embedded-iframe
+:source: code/box-model.iframe.html
+:start-after: "<!-- [begin:demo] -->"
+:end-before: "<!-- [end:demo] -->"
+```
+````
+
+`:start-after:` and the other selection options are the ones `literalinclude`
+uses (`:lines:`, `:start-line:`/`:end-line:`, `:start-at:`/`:end-at:`,
+`:end-before:`, `:dedent:`), so one example file can serve several slides.
+`:source:` together with an inline body is an error, and so is a selection
+option without `:source:`.
+
+Note that `ld2 build` and `ld2 watch` do not yet track the file as a dependency
+of the deck — as with `{include}` and `{literalinclude}`, editing it alone
+rebuilds nothing. `ld2 serve` rebuilds everything and is unaffected.
 
 ### Raw HTML
 

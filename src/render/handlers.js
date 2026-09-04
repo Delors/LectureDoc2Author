@@ -747,12 +747,23 @@ export function buildHandlers(ctx) {
             all(h, node),
         );
 
+    /**
+     * The configuration a module component reads.
+     *
+     * The body is *text*, not markup: every component reads it with
+     * `element.textContent` (`ld-embedded-iframe`, `ld-lightweight-css-editor`,
+     * `ld-timeline`, `ld-quizzy`, `ld-group-assignment`), and an
+     * `embedded-iframe` body passed through raw would put a real `<iframe>`
+     * into the DOM - after which `textContent` yields only the fallback text
+     * and the component renders nothing. So it is escaped here, the way rst2ld
+     * escaped it, and a deck can write its HTML plainly.
+     */
     const ldModule = (h, node) =>
         h(
             node,
             "ld-module",
             { class: cls(node.class), name: node.name, scope: node.scope },
-            node.value ? [raw(node.value)] : [],
+            node.value ? [u("text", node.value)] : [],
         );
 
     /*  This project's class roles (`{eng}`text``) produce an `ldSpan`;

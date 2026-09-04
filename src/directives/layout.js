@@ -2,8 +2,12 @@
  * supplemental, compound and the docutils compatible `class` directive.
  */
 
-import { directiveError } from "../context.js";
+import fs from "node:fs";
+import path from "node:path";
+
+import { currentSource, directiveError } from "../context.js";
 import { makeClasses, makeId, titleNode, toText } from "../util.js";
+import { CODE_SELECTION_OPTIONS, selectLines } from "./code-util.js";
 
 /**
  * The class a directive adds by itself, written out in the argument as well.
@@ -264,6 +268,32 @@ const compound = {
 
 /* --------------------------------------------------------------- module  */
 
+/*
+ * `:lineno-match:` is deliberately not offered: a module body is configuration,
+ * not a code listing, so there are no line numbers to match.
+ */
+const { "lineno-match": _linenoMatch, ...MODULE_SELECTION_OPTIONS } =
+    CODE_SELECTION_OPTIONS;
+
+const SELECTION_KEYS = Object.keys(MODULE_SELECTION_OPTIONS);
+
+/**
+ * Declares that a JavaScript module is required, and carries its configuration.
+ *
+ * The body is handed to the component as text (`element.textContent`), so it
+ * needs no escaping - an `embedded-iframe` body is written as plain HTML.
+ *
+ * With `:source:` the body comes from a file instead:
+ *
+ *     ```{module} embedded-iframe
+ *     :source: code/box-model.iframe.html
+ *     ```
+ *
+ * which is what turns a 60-line iframe example from an unreadable block in the
+ * middle of a deck into a real file - one with syntax highlighting in the
+ * editor, that can be opened in a browser on its own. `:start-after:` and the
+ * other selection options let one such file serve several slides.
+ */
 const moduleDirective = {
     name: "module",
     doc: "Declares that a JavaScript module is required (`<ld-module>`).",
@@ -271,28 +301,89 @@ const moduleDirective = {
     options: {
         class: classOption,
         scope: { type: String, doc: "`slide`, `document` or `all` (default)." },
+        source: {
+            type: String,
+            doc: "Read the body from this file, relative to the document.",
+        },
+        ...MODULE_SELECTION_OPTIONS,
     },
     body: { type: String },
     run(data) {
-        const scope = (data.options?.scope ?? "all").toLowerCase();
+        const options = data.options ?? {};
+        const scope = (options.scope ?? "all").toLowerCase();
         if (!["slide", "document", "all"].includes(scope)) {
             throw directiveError(
                 data,
-                `:scope: "${data.options?.scope}" is not a scope`,
+                `:scope: "${options.scope}" is not a scope`,
                 { hint: "Use `slide`, `document` or `all` (the default)." },
             );
         }
+
+        const inlineBody = data.body ?? "";
+        let value = inlineBody;
+
+        if (options.source !== undefined) {
+            // Two bodies are never a typo worth guessing at: silently
+            // preferring one would hide whichever half the author meant.
+            if (inlineBody.trim() !== "") {
+                throw directiveError(
+                    data,
+                    ":source: and a body cannot be combined",
+                    {
+                        hint: "The configuration comes either from the file or from the body; remove one.",
+                    },
+                );
+            }
+            value = readSource(data, options);
+        } else {
+            const given = SELECTION_KEYS.filter(
+                (key) => options[key] !== undefined,
+            );
+            if (given.length > 0) {
+                throw directiveError(
+                    data,
+                    `${given.map((k) => `:${k}:`).join(", ")} without :source:`,
+                    {
+                        hint: "These options select part of the file `:source:` names; an inline body is used whole.",
+                    },
+                );
+            }
+        }
+
         return [
             {
                 type: "ldModule",
                 name: data.arg,
                 scope,
-                class: makeClasses(data.options?.class),
-                value: data.body ?? "",
+                class: makeClasses(options.class),
+                value,
             },
         ];
     },
 };
+
+/** Reads (the selected part of) the file `:source:` names. */
+function readSource(data, options) {
+    const source = currentSource();
+    const target = path.resolve(path.dirname(source), options.source);
+    let text;
+    try {
+        text = fs.readFileSync(target, "utf-8");
+    } catch (error) {
+        throw directiveError(
+            data,
+            `cannot read "${options.source}": ${error.code ?? error.message}`,
+            { hint: `Resolved to ${target}, relative to this document.` },
+        );
+    }
+    try {
+        return selectLines(text, options).value;
+    } catch (error) {
+        throw directiveError(data, `${error.message} (in ${options.source})`, {
+            hint: error.ldHint,
+        });
+    }
+}
 
 export const layoutDirectives = [
     topic,
