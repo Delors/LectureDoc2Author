@@ -200,6 +200,19 @@ function dedent(lines, spec) {
 }
 
 /**
+ * `:dedent:` is opt-in.
+ *
+ * docutils' `include` keeps the indentation of the lines it selects, so an
+ * excerpt taken from inside a class or a method stays indented. Dedenting
+ * unconditionally would silently reformat every excerpt that uses
+ * `:start-after:`/`:end-before:`/`:start-line:` - only strip when the author
+ * asked for it (an empty `:dedent:` means "the common indentation").
+ */
+function maybeDedent(lines, spec) {
+    return spec === undefined ? lines : dedent(lines, spec);
+}
+
+/**
  * Applies the selection options to `text`.
  *
  * @returns {{value: string, firstLineNumber: number}} the selected text and
@@ -229,7 +242,7 @@ export function selectLines(text, options = {}) {
         }
         const first = [...wanted].sort((a, b) => a - b)[0] ?? 1;
         return {
-            value: dedent(picked, options.dedent).join("\n"),
+            value: maybeDedent(picked, options.dedent).join("\n"),
             firstLineNumber: first,
         };
     }
@@ -260,7 +273,7 @@ export function selectLines(text, options = {}) {
     }
 
     return {
-        value: dedent(lines.slice(from, to), options.dedent).join("\n"),
+        value: maybeDedent(lines.slice(from, to), options.dedent).join("\n"),
         firstLineNumber: from + 1,
     };
 }

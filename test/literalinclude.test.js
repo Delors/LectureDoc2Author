@@ -94,6 +94,20 @@ test("selectLines: start-line / end-line are 1-based and inclusive", () => {
     assert.equal(firstLineNumber, 4);
 });
 
+test("selectLines: without :dedent: the indentation is kept", () => {
+    // docutils' `include` keeps it; dedenting by default would silently
+    // reformat every excerpt taken from inside a class or a method.
+    const { value } = selectLines(SAMPLE, {
+        "start-at": "    best = math.inf",
+        "end-before": "    return best",
+    });
+    assert.match(value, /^ {4}best = math\.inf/);
+});
+
+test("selectLines: :lines: without :dedent: keeps the indentation too", () => {
+    assert.equal(selectLines(SAMPLE, { lines: "5" }).value, "    best = math.inf");
+});
+
 test("selectLines: dedent removes the common indentation", () => {
     const { value } = selectLines(SAMPLE, {
         "start-at": "    best = math.inf",
