@@ -199,7 +199,8 @@ const includeSvg = {
                 } required`,
                 {
                     hint:
-                        "They give the SVG its box on the slide, e.g. `:width: 1600` and `:height: 900`.\n" +
+                        "They give the SVG its box on the slide, typically in a relative size such as `ch` or `lh` and with the aspect ratio of its `viewBox`,\n" +
+                        'e.g. `:width: 60ch` and `:height: 33.75ch` for `viewBox="0 0 160 90"`.\n' +
                         "A file that only holds definitions for other SVGs belongs in `ld.include-globals`.",
                 },
             );

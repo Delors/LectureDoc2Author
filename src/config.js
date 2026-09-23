@@ -4,6 +4,9 @@
  *
  *   - in `myst.yml` below `project:` (applies to the whole project), and/or
  *   - in a document's frontmatter (overrides the project settings).
+ *
+ * The exception are the keys in `LD_ACCUMULATING_KEYS` (the deck specific CSS
+ * and markup): there, the document *adds* to what `myst.yml` lists.
  */
 
 import fs from "node:fs";
@@ -77,6 +80,10 @@ export const DEFAULT_LD_CONFIG = {
      * with `<defs>`, a `<style>`, a one-off `<script>` all have to bring their
      * own element.
      *
+     * All four *accumulate* (see `LD_ACCUMULATING_KEYS`): the entries from
+     * `myst.yml` come first, the document's own follow. A file that is listed
+     * on both levels is included once.
+     *
      * A path is resolved relative to the *document* when it stands in a
      * document's frontmatter, and relative to the project root when it stands
      * in `myst.yml` (`resolveConfig` makes those absolute while merging).
@@ -126,6 +133,20 @@ export const DEFAULT_LD_CONFIG = {
 export const LD_PATH_LIST_KEYS = ["include-styles", "include-globals"];
 
 /**
+ * `ld` keys whose value *accumulates* instead of being replaced: the entries
+ * from `myst.yml` come first, the document's own follow.
+ *
+ * With plain override semantics, project-wide definitions would not work at
+ * all: the first deck with an `include-globals` of its own would silently
+ * lose the shared SVG markers, and every drawing in it would lose its
+ * arrowheads - without a single warning.
+ *
+ * After `resolveConfig`, each of them is a list under its kebab-case name;
+ * `ldList` reads them in either form.
+ */
+export const LD_ACCUMULATING_KEYS = [...LD_PATH_LIST_KEYS, "styles", "globals"];
+
+/**
  * Every `ld:` key the toolchain reads. Anything else is a typo, and a typo in
  * a key that is merely ignored is a silent failure - `ld.module` instead of
  * `ld.requiredModules` cost an afternoon once. `checkLdKeys` turns them into
@@ -166,6 +187,21 @@ export function toCamel(key) {
 /** Reads an `ld` value, accepting the kebab-case and the camelCase spelling. */
 export function ldGet(ld, key) {
     return ld?.[key] ?? ld?.[toCamel(key)];
+}
+
+/**
+ * Reads an `ld` value as a list: both spellings, in that order, a single value
+ * counting as a list of one and a missing one as the empty list.
+ */
+export function ldList(ld, key) {
+    if (!isPlainObject(ld)) return [];
+    // `styles` and `globals` have only the one spelling.
+    const spellings = [...new Set([key, toCamel(key)])];
+    return spellings.flatMap((spelling) => {
+        const value = ld[spelling];
+        if (value === undefined || value === null) return [];
+        return Array.isArray(value) ? value : [value];
+    });
 }
 
 function isPlainObject(value) {
@@ -257,11 +293,12 @@ function absolutePathLists(projectLd, projectRoot) {
     for (const key of LD_PATH_LIST_KEYS) {
         for (const spelling of [key, toCamel(key)]) {
             const value = out[spelling];
-            if (!Array.isArray(value)) continue;
-            out[spelling] = value.map((entry) =>
-                typeof entry === "string"
-                    ? path.resolve(projectRoot, entry)
-                    : entry,
+            if (value === undefined || value === null) continue;
+            out[spelling] = (Array.isArray(value) ? value : [value]).map(
+                (entry) =>
+                    typeof entry === "string"
+                        ? path.resolve(projectRoot, entry)
+                        : entry,
             );
         }
     }
@@ -276,13 +313,14 @@ export function resolveConfig({
 }) {
     const project = projectConfig.project ?? {};
     const documentLd = frontmatter.ld ?? {};
-    let ld = deepMerge(
-        deepMerge(
-            DEFAULT_LD_CONFIG,
-            absolutePathLists(project.ld, projectRoot),
-        ),
-        documentLd,
-    );
+    const projectLd = absolutePathLists(project.ld, projectRoot);
+    let ld = deepMerge(deepMerge(DEFAULT_LD_CONFIG, projectLd), documentLd);
+    // `deepMerge` replaces lists; these keys add up instead - the project's
+    // entries first (see `LD_ACCUMULATING_KEYS`).
+    for (const key of LD_ACCUMULATING_KEYS) {
+        delete ld[toCamel(key)];
+        ld[key] = [...ldList(projectLd, key), ...ldList(documentLd, key)];
+    }
     // Secrets win over `myst.yml` so that a checked-in placeholder there cannot
     // shadow the real password.
     ld = deepMerge(ld, loadSecrets(projectRoot, ld.secrets));

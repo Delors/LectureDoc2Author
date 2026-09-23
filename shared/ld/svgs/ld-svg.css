@@ -1,0 +1,137 @@
+/* ---------------------------------------------------------------------------
+   Shared classes for the SVG drawings of LectureDoc2 decks.
+
+   Include with `ld.include-styles` (in a project: in `myst.yml`, together with
+   `ld-svg-defs.svg` in `ld.include-globals`). Documentation:
+   LectureDoc2Author/docs-svgs.md; the colour model: LectureDoc2/SVGs.md.
+
+   - Opt-in only: every rule needs an `ld-` class and matches only inside an
+     <svg>. Nothing here styles `line`, `path` or `text` as such, so drawings
+     that do not use the classes are unaffected.
+   - Everything paints with `currentColor`. The colour modifiers (`ld-muted`,
+     `ld-accent`, ...) only set `color`, so they work on a single element as
+     well as on a <g> or the root <svg>, and they follow the surrounding
+     [data-theme] (admonitions!).
+   - Lengths are in `em`, i.e. relative to the drawing's font-size. A drawing
+     that sets the size of a normal label as `font-size` on its root gets
+     stroke widths and dash patterns that match every other drawing.
+   - All rules sit in the cascade layer `ld-svg`. A deck's own CSS is not
+     layered and therefore always wins, whatever its specificity.
+   --------------------------------------------------------------------------- */
+
+@layer ld-svg {
+    /* ---- colour modifiers ------------------------------------------------ */
+
+    svg.ld-muted,
+    svg .ld-muted {
+        color: var(--muted-color);
+    }
+    svg.ld-accent,
+    svg .ld-accent {
+        color: var(--accent-color);
+    }
+    svg.ld-danger,
+    svg .ld-danger {
+        color: var(--danger-color);
+    }
+    svg.ld-success,
+    svg .ld-success {
+        color: var(--success-color);
+    }
+    svg.ld-info,
+    svg .ld-info {
+        color: var(--info-color);
+    }
+    svg.ld-warning,
+    svg .ld-warning {
+        color: var(--warning-color);
+    }
+
+    /* ---- lines ----------------------------------------------------------- */
+
+    svg .ld-line,
+    svg .ld-connector {
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 0.1em;
+    }
+
+    /* A line with an arrowhead (ld-svg-defs.svg). The tip lies
+       1.5 x stroke-width beyond the line's end point. */
+    svg .ld-connector {
+        marker-end: url(#ld-arrow);
+    }
+
+    /* A marker is coloured where it is defined, not where it is used; the
+       modifiers therefore also have to switch the marker. Put the modifier on
+       the connector itself or on its closest group. */
+    :is(svg.ld-muted, svg .ld-muted) .ld-connector,
+    svg .ld-connector.ld-muted {
+        marker-end: url(#ld-arrow-muted);
+    }
+    :is(svg.ld-accent, svg .ld-accent) .ld-connector,
+    svg .ld-connector.ld-accent {
+        marker-end: url(#ld-arrow-accent);
+    }
+    :is(svg.ld-danger, svg .ld-danger) .ld-connector,
+    svg .ld-connector.ld-danger {
+        marker-end: url(#ld-arrow-danger);
+    }
+    :is(svg.ld-success, svg .ld-success) .ld-connector,
+    svg .ld-connector.ld-success {
+        marker-end: url(#ld-arrow-success);
+    }
+    :is(svg.ld-info, svg .ld-info) .ld-connector,
+    svg .ld-connector.ld-info {
+        marker-end: url(#ld-arrow-info);
+    }
+    :is(svg.ld-warning, svg .ld-warning) .ld-connector,
+    svg .ld-connector.ld-warning {
+        marker-end: url(#ld-arrow-warning);
+    }
+
+    svg .ld-dashed {
+        stroke-dasharray: 0.4em 0.25em;
+    }
+    svg .ld-dotted {
+        stroke-dasharray: 0 0.25em;
+        stroke-linecap: round;
+    }
+
+    /* ---- shapes ---------------------------------------------------------- */
+
+    svg .ld-box {
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 0.1em;
+    }
+    /* Three fill levels of the current colour: background region, element,
+       emphasised element. They stack: a cell on a panel is darker still. */
+    svg .ld-panel {
+        fill: currentColor;
+        fill-opacity: 0.1;
+    }
+    svg .ld-cell {
+        fill: currentColor;
+        fill-opacity: 0.3;
+    }
+    svg .ld-highlight {
+        fill: currentColor;
+        fill-opacity: 0.65;
+    }
+
+    /* ---- text ------------------------------------------------------------ */
+
+    svg .ld-label {
+        fill: currentColor;
+    }
+    /* Text on a filled shape (e.g. on an ld-highlight). */
+    svg .ld-label-on-fill {
+        fill: var(--background-color);
+    }
+    /* Deliberately no `text-anchor` here: on a <tspan> in the middle of a
+       line it would re-anchor that chunk. Centre on the <text> or the <g>. */
+    svg .ld-mono {
+        font-family: var(--monospaced-font-family);
+    }
+}

@@ -19,6 +19,8 @@ ld2 clean      # remove what build and pdf generated
 
 `build` and `serve` work on loose files. `pdf`, `publish`, `watch`, `status` and
 `clean` need an `ld.config.json` — see [docs-publishing.md](docs-publishing.md).
+Drawings — `{include-svg}`, deck CSS and definitions, the shared `ld-` SVG
+markers and classes — are covered by [docs-svgs.md](docs-svgs.md).
 
 `clean` derives what to delete from the sources — `<deck>.md.html`, its PDF and
 the two password files, plus the vendored KaTeX directory — so a generated file
@@ -102,7 +104,8 @@ written in, which with `{include}` is not necessarily the deck being built:
 building 13 document(s):
   DHBW_W3WI-110.1-Web-Programmierung/folien.de.md.html (64 ms)
   [error] shared/snippets/intro.de.md:12:1: include-svg: :width: is required
-          They give the SVG its box on the slide, e.g. `:width: 1600` and `:height: 900`.
+          They give the SVG its box on the slide, in `ch` or `lh` and with the aspect ratio of its `viewBox`,
+          e.g. `:width: 60ch` and `:height: 33.75ch` for `viewBox="0 0 160 90"`.
           A file that only holds definitions for other SVGs belongs in `ld.include-globals`.
           included from web-html/folien.de.md:30
   cv/folien.de.md.html (16 ms)
@@ -256,8 +259,12 @@ the document is being parsed — before the slides exist and before `ld.js`, whi
 is a module and therefore deferred; use `type="module"` or `DOMContentLoaded`
 if it needs the DOM.
 
-A list in a deck's frontmatter **replaces** the one from `myst.yml`, it does
-not extend it. Project-wide styling belongs in `ld.theme`.
+All four keys **accumulate**: what `myst.yml` lists comes first, a deck's own
+entries follow — a deck's list extends the project's, it does not replace it.
+A file listed on both levels is included once, which matters for SVG `<defs>`:
+a second copy would duplicate every id in it. This is what makes project-wide
+SVG definitions possible, e.g. the shared `ld-` markers and classes in
+[`shared/ld/svgs/`](shared/ld/svgs/) — see [docs-svgs.md](docs-svgs.md).
 
 ## Secrets and password files
 
@@ -368,7 +375,7 @@ it simply is not a paragraph. In running text, write it as inline code:
 | `compound`              | `<div class="compound">`                      | `:theme:`                                                |
 | `module`                | `<ld-module>`                                 | pulls in the configured JS module; `:source:`            |
 | `popover`               | `<button popovertarget>` + `<dialog popover>` |                                                          |
-| `include-svg`           | inline `<svg>`                                | `:width:` and `:height:` are required                    |
+| `include-svg`           | inline `<svg>`                                | `:width:` and `:height:` (in `ch`/`lh`) are required; see [docs-svgs.md](docs-svgs.md) |
 | `global-information`    | `<ld-global-information>`                     | `:type:`, `:symbol:`, `:embed:`                          |
 | `exercise` / `solution` | `<div class="ld-exercise">`                   | solutions are AES-GCM encrypted                          |
 | `presenter-note`        | `<ld-presenter-note encrypted>`               | needs a master password                                  |
@@ -610,6 +617,9 @@ document.
 pnpm test        # node:test based unit tests
 pnpm fmt         # prettier
 ```
+
+Instructions for AI coding agents are in [AGENTS.md](AGENTS.md); task-specific
+skills (e.g. embedding SVGs) are in [`skills/`](skills/).
 
 ## License
 

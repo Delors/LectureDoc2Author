@@ -9,7 +9,7 @@ import { createParseOptions, parse } from "./parse.js";
 import { projectHref, relativeHref, vendorKatex } from "./assets.js";
 import {
     findMystConfig,
-    ldGet,
+    ldList,
     loadMystConfig,
     resolveConfig,
     splitFrontmatter,
@@ -88,9 +88,7 @@ function toCamel(key) {
  * @returns {{contents: string[], paths: string[]}}
  */
 function readListedFiles(ld, key, documentDir) {
-    const value = ldGet(ld, key);
-    if (value === undefined) return { contents: [], paths: [] };
-    const entries = Array.isArray(value) ? value : [value];
+    const entries = ldList(ld, key);
     const contents = [];
     const paths = [];
     for (const entry of entries) {
@@ -100,6 +98,12 @@ function readListedFiles(ld, key, documentDir) {
             );
         }
         const file = path.resolve(documentDir, entry);
+        /*
+         * Listed in `myst.yml` *and* in the deck (the lists accumulate): one
+         * copy only. A second copy of an SVG `<defs>` file would put every id
+         * in it into the document twice.
+         */
+        if (paths.includes(file)) continue;
         paths.push(file);
         try {
             contents.push(fs.readFileSync(file, "utf-8"));
@@ -301,13 +305,11 @@ async function convertDocument(sourcePath, split, options = {}) {
     const documentDir = path.dirname(sourcePath);
     const includedStyles = readListedFiles(ld, "include-styles", documentDir);
     const includedGlobals = readListedFiles(ld, "include-globals", documentDir);
-    const inlineStyles = ldGet(ld, "styles");
-    const inlineGlobals = ldGet(ld, "globals");
+    const inlineStyles = ldList(ld, "styles").filter(Boolean).map(String);
+    const inlineGlobals = ldList(ld, "globals").filter(Boolean).map(String);
 
-    const styleBlocks = [...includedStyles.contents];
-    if (inlineStyles) styleBlocks.push(String(inlineStyles));
-    const globalBlocks = [...includedGlobals.contents];
-    if (inlineGlobals) globalBlocks.push(String(inlineGlobals));
+    const styleBlocks = [...includedStyles.contents, ...inlineStyles];
+    const globalBlocks = [...includedGlobals.contents, ...inlineGlobals];
 
     /*
      * Everything this document was built from, beyond its own source. Nothing

@@ -81,7 +81,8 @@ test("a missing :width: names the file, the line and the directive", async () =>
         "d.svg": "<svg></svg>",
     });
     assert.match(report, /^deck\.md:5:1: include-svg: :width: is required$/m);
-    assert.match(report, /:width: 1600/);
+    // A unit, not a bare number: `width: 1600` is not valid CSS.
+    assert.match(report, /:width: 60ch/);
 });
 
 test("both missing options are reported in one message", async () => {

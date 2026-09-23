@@ -120,6 +120,88 @@ test("paths are document-relative in the frontmatter, project-relative in myst.y
     assert.match(html, /\.project \{ color: green; \}/);
 });
 
+const PROJECT = (ld) =>
+    "version: 1\nproject:\n  ld:\n    path: LectureDoc2/src\n" + ld;
+
+test("a deck's lists extend the ones from myst.yml, project entries first", async () => {
+    const { html } = await build(
+        {
+            "shared/defs.svg": '<svg id="project-defs"></svg>\n',
+            "shared/project.css": ".project { color: green; }\n",
+            "deck/defs.svg": '<svg id="deck-defs"></svg>\n',
+            "deck/deck.css": ".deck { color: red; }\n",
+            "deck/folien.de.md": DECK(
+                "  include-styles:\n    - deck.css\n" +
+                    "  include-globals:\n    - defs.svg\n",
+            ),
+        },
+        {
+            config: PROJECT(
+                "    include-styles:\n      - shared/project.css\n" +
+                    "    include-globals:\n      - shared/defs.svg\n",
+            ),
+        },
+    );
+    assert.match(
+        html,
+        /\.project \{/,
+        "the project's CSS survives the deck's list",
+    );
+    assert.match(
+        html,
+        /id="project-defs"/,
+        "the project's defs survive the deck's list",
+    );
+    assert.ok(html.indexOf(".project {") < html.indexOf(".deck {"));
+    assert.ok(html.indexOf("project-defs") < html.indexOf("deck-defs"));
+});
+
+test("a file listed in myst.yml and in the deck is included once", async () => {
+    const { html, dependencies } = await build(
+        {
+            "shared/defs.svg": '<svg id="shared-defs"></svg>\n',
+            "deck/folien.de.md": DECK(
+                "  include-globals:\n    - ../shared/defs.svg\n",
+            ),
+        },
+        { config: PROJECT("    include-globals:\n      - shared/defs.svg\n") },
+    );
+    assert.equal(html.split('id="shared-defs"').length - 1, 1);
+    assert.equal(dependencies.length, 1);
+});
+
+test("inline styles and globals accumulate, too - in both spellings", async () => {
+    const { html } = await build(
+        {
+            "shared/defs.svg": '<svg id="project-camel"></svg>\n',
+            "deck/folien.de.md": DECK(
+                "  styles: |\n    .deck { color: red; }\n" +
+                    '  globals: |\n    <svg id="deck-inline"></svg>\n',
+            ),
+        },
+        {
+            // `includeGlobals`: the camelCase spelling in `myst.yml` has to
+            // survive a deck that uses the other keys.
+            config: PROJECT(
+                "    styles: |\n      .project { color: green; }\n" +
+                    "    includeGlobals:\n      - shared/defs.svg\n",
+            ),
+        },
+    );
+    assert.equal(
+        html.split(".project {").length - 1,
+        1,
+        "once, not per spelling",
+    );
+    assert.ok(html.indexOf(".project {") < html.indexOf(".deck {"));
+    assert.ok(html.indexOf("project-camel") < html.indexOf("deck-inline"));
+});
+
+test("no empty <style> for a deck without styles", async () => {
+    const { html } = await build({ "deck/folien.de.md": DECK("  id: x\n") });
+    assert.doesNotMatch(html, /<style>\s*<\/style>/);
+});
+
 test("a file that cannot be read fails the build, naming the key", async () => {
     await assert.rejects(
         build({
