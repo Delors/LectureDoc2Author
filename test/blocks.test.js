@@ -78,6 +78,22 @@ test("csv-table pads short rows to the width of the widest row", () => {
     assert.match(html, /<tr><td><p>d<\/p><\/td><td><\/td><td><\/td><\/tr>/);
 });
 
+test("csv-table cells may reference footnotes defined elsewhere", () => {
+    const html = render(
+        '```{csv-table}\n:header: A, B\n\n"Text [^BSI]", "`[^code]`"\n```\n\n' +
+            "[^BSI]: Hinweis.\n",
+    );
+    assert.match(
+        html,
+        /<td><p>Text <a class="brackets" href="#footnote-BSI" id="footnote-reference-BSI" role="doc-noteref">/,
+    );
+    // A footnote reference inside inline code stays literal ...
+    assert.match(html, /<span class="docutils literal">\[\^code\]<\/span>/);
+    // ... and the placeholder definitions do not show up as footnotes.
+    assert.equal(html.match(/role="doc-footnote"/g)?.length, 1);
+    assert.match(html, /<p>Hinweis\.<\/p>/);
+});
+
 test("csv-table :stub-columns: turns leading cells into row headers", () => {
     const html = render(
         "```{csv-table}\n:header: Angriff, Bekannt\n:stub-columns: 1\n\n" +

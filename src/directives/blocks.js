@@ -6,7 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { currentSource, directiveError } from "../context.js";
-import { makeClasses, parseInline, titleNode } from "../util.js";
+import { makeClasses, parseFragment, parseInline, titleNode } from "../util.js";
 import { CODE_PRESENTATION_OPTIONS, buildCodeNode } from "./code-util.js";
 
 const classOption = { type: String, doc: "Additional CSS classes." };
@@ -388,7 +388,7 @@ const csvTable = {
                 stubOnly: !header && column < stubColumns,
                 class: column < stubColumns ? ["stub"] : undefined,
                 // Cell content is parsed as MyST so inline markup keeps working.
-                children: ctx.parseMyst(cell).children ?? [],
+                children: parseFragment(ctx, cell).children ?? [],
             })),
         });
 

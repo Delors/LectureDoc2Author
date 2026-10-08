@@ -86,6 +86,31 @@ export function titleNode(nodes, prop = "titleNodes") {
 }
 
 /**
+ * Parses a fragment of MyST - a table cell, a directive argument - through the
+ * directive context, keeping footnote references (`[^label]`) intact.
+ *
+ * The fragment is parsed on its own, without the document's footnote
+ * definitions, and markdown-it only turns `[^label]` into a reference when it
+ * has seen a definition for `label` in the same parse; otherwise the text stays
+ * literal. A placeholder definition per referenced label is therefore parsed
+ * along and dropped again - the real definition elsewhere in the deck is the
+ * one the reference resolves to.
+ */
+export function parseFragment(ctx, text) {
+    const source = String(text);
+    const labels = new Set(
+        [...source.matchAll(/\[\^([^\]\s]+)\]/g)].map((m) => m[1]),
+    );
+    if (labels.size === 0) return ctx.parseMyst(source);
+    const definitions = [...labels].map((l) => `[^${l}]: _`).join("\n");
+    const tree = ctx.parseMyst(`${source}\n\n${definitions}`);
+    tree.children = (tree.children ?? []).filter(
+        (node) => node.type !== "footnoteDefinition",
+    );
+    return tree;
+}
+
+/**
  * Parses `text` as *inline* MyST through the directive context.
  *
  * Needed for directives whose body is not MyST (`rubric`, `csv-table`):
@@ -95,7 +120,7 @@ export function titleNode(nodes, prop = "titleNodes") {
  */
 export function parseInline(ctx, text) {
     if (!text) return [];
-    const tree = ctx.parseMyst(String(text));
+    const tree = parseFragment(ctx, text);
     const children = tree.children ?? [];
     return children.length === 1 && children[0].type === "paragraph"
         ? (children[0].children ?? [])
