@@ -143,4 +143,63 @@ export function highlight(code, language) {
     return tokens.map(renderToken).join("");
 }
 
+/**
+ * Highlights `code` as a whole and returns one HTML string per line.
+ *
+ * Highlighting each line on its own loses the context of tokens that span
+ * several lines (block and doc comments, text blocks, template literals, ...).
+ * Instead the complete block is tokenized once; at every line break the open
+ * `<span>`s are closed and reopened on the next line, so that each line is
+ * well-formed HTML on its own.
+ *
+ * @param {string} code
+ * @param {string|undefined} language
+ * @returns {string[]}
+ */
+export function highlightLines(code, language) {
+    const grammar = grammarFor(language);
+    if (!grammar) return String(code).split("\n").map(escapeText);
+
+    const lines = [];
+    const open = []; // classes of the currently open spans (outermost first)
+    let current = "";
+
+    const openTags = () =>
+        open.map((cls) => `<span class="${cls}">`).join("");
+    const closeTags = () => "</span>".repeat(open.length);
+
+    function emitText(text) {
+        const parts = text.split("\n");
+        parts.forEach((part, i) => {
+            if (i > 0) {
+                lines.push(current + closeTags());
+                current = openTags();
+            }
+            current += escapeText(part);
+        });
+    }
+
+    function walk(token) {
+        if (typeof token === "string") return emitText(token);
+        if (Array.isArray(token)) return token.forEach(walk);
+
+        const mapped = TOKEN_CLASSES[token.type];
+        const alias = Array.isArray(token.alias) ? token.alias[0] : token.alias;
+        const cls = mapped ? (alias && TOKEN_CLASSES[alias]) || mapped : null;
+        if (cls) {
+            open.push(cls);
+            current += `<span class="${cls}">`;
+        }
+        walk(token.content);
+        if (cls) {
+            open.pop();
+            current += "</span>";
+        }
+    }
+
+    walk(Prism.tokenize(String(code), grammar));
+    lines.push(current);
+    return lines;
+}
+
 export { TOKEN_CLASSES, LANGUAGE_ALIASES };

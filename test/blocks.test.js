@@ -315,6 +315,15 @@ test("an unknown language is escaped, not highlighted", () => {
     assert.equal(highlight("<a> & b", "not-a-language"), "&lt;a&gt; &amp; b");
 });
 
+test("multi-line comments stay highlighted when lines are numbered", () => {
+    const html = render(
+        "```{code-block} java\n:number-lines:\n\n/* eins\n   zwei */\nint a;\n```",
+    );
+    assert.match(html, /<span class="comment single">\/\* eins<\/span>/);
+    assert.match(html, /<span class="comment single"> {3}zwei \*\/<\/span>/);
+    assert.match(html, /<span class="keyword">int<\/span>/);
+});
+
 test("code roles render as inline <code>", () => {
     const html = render("Verwenden Sie {java}`BigInteger`.", {
         ld: { "code-roles": { java: "java" } },

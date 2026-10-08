@@ -16,7 +16,7 @@ import { all } from "./hast-compat.js";
 
 import { INLINE_TYPES, classAttr, escapeHtml, mergeClasses } from "../util.js";
 import { nodeError } from "../context.js";
-import { highlight } from "./highlight.js";
+import { highlight, highlightLines } from "./highlight.js";
 import { label } from "../i18n.js";
 
 /** Turns a `class` property (array or string) into a hast class attribute. */
@@ -229,12 +229,13 @@ export function buildHandlers(ctx) {
 
         if (showLineNumbers) {
             const lines = value.split("\n");
+            const highlighted = highlightLines(value, language);
             const start = node.startingLineNumber ?? node.lineno_start ?? 1;
             const digits = Math.max(
                 node.lineNumberDigits ?? 1,
                 String(start + lines.length - 1).length,
             );
-            lines.forEach((line, i) => {
+            lines.forEach((_line, i) => {
                 const number = `${String(start + i).padStart(digits, " ")}`;
                 const hot = emphasized.has(i + 1);
                 children.push(
@@ -255,7 +256,7 @@ export function buildHandlers(ctx) {
                         },
                         [
                             raw(
-                                highlight(line, language) +
+                                highlighted[i] +
                                     (i < lines.length - 1 ? "\n" : ""),
                             ),
                         ],
@@ -269,7 +270,8 @@ export function buildHandlers(ctx) {
         // individual lines have to be addressable for emphasis.
         if (emphasized.size > 0) {
             const lines = value.split("\n");
-            lines.forEach((line, i) => {
+            const highlighted = highlightLines(value, language);
+            lines.forEach((_line, i) => {
                 children.push(
                     h(
                         node,
@@ -281,7 +283,7 @@ export function buildHandlers(ctx) {
                         },
                         [
                             raw(
-                                highlight(line, language) +
+                                highlighted[i] +
                                     (i < lines.length - 1 ? "\n" : ""),
                             ),
                         ],
