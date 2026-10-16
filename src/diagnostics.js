@@ -194,7 +194,7 @@ export function collectDiagnostics(
                 file: message.file ?? file,
                 line: line === undefined ? undefined : line + frontmatterOffset,
                 column,
-                hint: hintFor(reason),
+                hint: hintFor(reason) ?? message.note,
             }),
         };
     });

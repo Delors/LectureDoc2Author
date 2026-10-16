@@ -441,6 +441,94 @@ export function buildHandlers(ctx) {
         ]);
     };
 
+    /* ------------------------------------------------------------------ */
+    /* Citations and internal links                                       */
+    /* ------------------------------------------------------------------ */
+
+    /*
+     * docutils' HTML5 writer, verbatim (see `resolveCitations` for the
+     * numbering). `.citation-reference` and `[role="doc-backlink"]` are what
+     * `ld.js` registers its jump-to-slide handler on.
+     */
+    const ldCiteReference = (h, node) =>
+        h(
+            node,
+            "a",
+            {
+                class: "citation-reference",
+                href: `#${node.identifier}`,
+                id: node.referenceId,
+                role: "doc-biblioref",
+            },
+            [u("text", `[${node.label}]`)],
+        );
+
+    const ldBibliography = (h, node) =>
+        h(
+            node,
+            "div",
+            { role: "list", class: cls("citation-list", node.class) },
+            all(h, node),
+        );
+
+    /*
+     * Cited once: the label is the back link. Cited several times: the label
+     * is plain text, followed by `(1,2,…)` - one back link per reference.
+     * Never cited: no back link at all.
+     */
+    const ldCitation = (h, node) => {
+        const backrefs = node.backrefs ?? [];
+        const backlink = (href, text) =>
+            h(node, "a", { role: "doc-backlink", href: `#${href}` }, [
+                u("text", text),
+            ]);
+        const label = h(node, "span", { class: "label" }, [
+            h(node, "span", { class: "fn-bracket" }, [u("text", "[")]),
+            backrefs.length === 1
+                ? backlink(backrefs[0], node.label)
+                : u("text", node.label),
+            h(node, "span", { class: "fn-bracket" }, [u("text", "]")]),
+        ]);
+        const children = [u("text", "\n"), label, u("text", "\n")];
+        if (backrefs.length > 1) {
+            children.push(
+                h(node, "span", { class: "backrefs" }, [
+                    u("text", "("),
+                    ...backrefs.flatMap((href, i) => [
+                        ...(i > 0 ? [u("text", ",")] : []),
+                        backlink(href, String(i + 1)),
+                    ]),
+                    u("text", ")"),
+                ]),
+                u("text", "\n"),
+            );
+        }
+        children.push(...all(h, node));
+        return h(
+            node,
+            "div",
+            {
+                class: "citation",
+                id: node.identifier,
+                role: "doc-biblioentry",
+            },
+            children,
+        );
+    };
+
+    /* `{ref}` and `[text](#id)`; see `resolveCrossReferences`. */
+    const ldInternalLink = (h, node) =>
+        h(
+            node,
+            "a",
+            {
+                class: cls("reference", "internal", node.class),
+                href: node.url,
+                title: node.title || undefined,
+            },
+            all(h, node),
+        );
+
     /** `{java}`x`` -> `<code class="java">…</code>` (docutils' code role). */
     const ldInlineCode = (h, node) =>
         h(
@@ -899,6 +987,10 @@ export function buildHandlers(ctx) {
         list,
         footnoteReference,
         footnoteDefinition,
+        ldCiteReference,
+        ldBibliography,
+        ldCitation,
+        ldInternalLink,
         ldTitle,
         ldContainer,
         ldRubric,

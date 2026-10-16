@@ -163,4 +163,9 @@ export const INLINE_TYPES = new Set([
     "ldInlineCode",
     "ldSource",
     "ldKbd",
+    "ldCiteReference",
+    "ldInternalLink",
+    "crossReference",
+    "cite",
+    "citeGroup",
 ]);

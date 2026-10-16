@@ -4,6 +4,7 @@ import { admonitionDirectives } from "./admonitions.js";
 import { layoutDirectives } from "./layout.js";
 import { contentDirectives } from "./content.js";
 import { blockDirectives } from "./blocks.js";
+import { citationDirectives } from "./citations.js";
 
 export { STANDARD_ADMONITIONS, TITLED_ADMONITIONS } from "./admonitions.js";
 export {
@@ -66,4 +67,5 @@ export const directives = [
     ...layoutDirectives,
     ...contentDirectives,
     ...blockDirectives,
+    ...citationDirectives,
 ].map(guard);

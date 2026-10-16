@@ -387,6 +387,7 @@ it simply is not a paragraph. In running text, write it as inline code:
 | `rubric`                | `<p class="rubric">`                          | informal heading                                         |
 | `code` / `code-block`   | `<pre class="code …">`                        | `:number-lines:`, `:emphasize-lines:`                    |
 | `csv-table`             | `<table>`                                     | `:header:`, `:widths:`, `:file:`; cells are MyST         |
+| `bibliography`          | `<div class="citation-list">`                 | definition list of citations; see [Citations](#citations-and-internal-links) |
 
 ### Including code from a file
 
@@ -539,9 +540,66 @@ Footnotes are rendered in docutils' shape and, unlike in stock mystmd, stay on
 the slide they were written on instead of being collected into one section at
 the end of the document.
 
+### Citations and internal links
+
+The counterpart of docutils' `[SS75]_` / `.. [SS75] …`: `{cite}` references an
+entry, `{bibliography}` lists the entries as a definition list - the term is the
+label, the definition the entry (any MyST content).
+
+```md
+Das Prinzip geht auf {cite}`SS75` zurück.
+
+# Literatur
+
+:::{bibliography}
+SS75
+: J. H. Saltzer, M. D. Schroeder: *The Protection of Information in Computer
+  Systems*. Proceedings of the IEEE 63(9), 1975.
+
+RFC9110
+: R. Fielding et al.: [HTTP Semantics](https://www.rfc-editor.org/rfc/rfc9110), 2022.
+:::
+```
+
+The output is docutils' HTML5 markup, which LectureDoc2 styles and whose links
+it follows to the right slide:
+
+```html
+<a class="citation-reference" href="#ss75" id="citation-reference-1" role="doc-biblioref">[SS75]</a>
+…
+<div role="list" class="citation-list">
+<div class="citation" id="ss75" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#citation-reference-1">SS75</a><span class="fn-bracket">]</span></span>
+<p>J. H. Saltzer, …</p></div>
+</div>
+```
+
+As in docutils, every reference gets its own anchor, `citation-reference-N`,
+numbered in slide order (titles included, hidden slides excluded). An entry that
+is cited once links back from its label; one that is cited several times shows
+the label as plain text followed by one back link per reference,
+`(1,2,3)` (`<span class="backrefs">`). An unknown label and a label defined twice
+(compared ignoring case) are errors, an entry that is never cited is a warning
+and rendered without a back link.
+
+The Pandoc syntax `[@SS75]` / `[@SS75; @AB]` maps onto the same references when
+a deck (or `myst.yml`) enables it with `ld.extensions.citations: true`. It is
+off by default, because markdown-it then also reads a bare `@name` in running
+text as a citation.
+
+Internal links carry docutils' `reference internal` classes, which is what
+LectureDoc2 needs to jump to the target slide:
+
+- `(label)=` before a block gives that block the id `label`; before a level-1
+  heading it names the slide (like `{#label}` after the heading).
+- `` {ref}`label` `` links to it, with the slide or heading title as text;
+  `` {ref}`Text <label>` `` sets the text. An unknown label is an error.
+- `[Text](#id)` and `[](#id)` (title as text) link to any id in the deck.
+
 ### Roles
 
-`{raw-html}` / `{html}` inserts its value verbatim, `{incremental}` wraps its
+`{raw-html}` / `{html}` inserts its value verbatim (an `html` entry in
+`ld.code-roles` takes over the `{html}` alias only; `{raw-html}` keeps working), `{incremental}` wraps its
 content in `<span class="incremental">`, every entry of `ld.roles` becomes a
 class-applying role and every entry of `ld.code-roles` an inline code role
 (the counterpart of docutils' `.. role:: java(code)`). mystmd's own roles (`{kbd}`, `{sub}`, `{sup}`, `{abbr}`,

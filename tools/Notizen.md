@@ -137,10 +137,11 @@ den URL-Fragment, und da LectureDoc den Fragment als `#slide-N` interpretiert,
 passiert nichts Sinnvolles.
 
 **Konsequenz:** Querverweise innerhalb eines Decks müssen die passende Klasse
-tragen. Da Markdown das nicht hergibt, den Link als rohes Inline-HTML
-schreiben — das funktioniert auch in einer Überschrift (dann aber die Folien-id
-explizit setzen, s. o.). Im HTML-Diff sieht ein Link mit falscher Klasse völlig
-normal aus; er tut nur nichts.
+tragen. *Seit Okt. 2026 erledigt ld2 das* (siehe Abschnitt 7b): `[Text](#id)`,
+`[](#id)` und `` {ref}`label` `` werden zu `class="reference internal"`,
+`(label)=` setzt die id des folgenden Blocks (vor einer `#`-Überschrift: der
+Folie). Rohes Inline-HTML ist dafür nicht mehr nötig. Im HTML-Diff gegen ältere
+Builds sieht man den Unterschied an `reference external` → `reference internal`.
 
 ---
 
@@ -221,10 +222,32 @@ die Datei als MyST parsen würde. Ersatz:
 
 ### Zitate (`[X]_` / `.. [X]`) und das Literaturverzeichnis
 
-`citations: false` in `LectureDoc2Author/src/parse.js` — MyST-Zitate sind in
-diesem Projekt abgeschaltet. Der Konverter lässt die Referenzen als `[X]\_`
-stehen und **kommentiert das Literaturverzeichnis komplett aus** (`% [X]`), die
-Folie ist dann leer.
+**Seit Okt. 2026 unterstützt ld2 Zitate nativ** (README, Abschnitt „Citations
+and internal links“; Änderungen in Abschnitt 7b):
+
+```markdown
+… geht auf {cite}`SS75` zurück.
+
+:::{bibliography}
+SS75
+: J. H. Saltzer, M. D. Schroeder: *The Protection of Information …*, 1975.
+:::
+```
+
+Das erzeugt genau das docutils-Markup unten, inklusive Mehrfachreferenzen
+(jede Referenz eine eigene `citation-reference-N`, im Eintrag
+`<span class="backrefs">(1,2,…)</span>`). Unbekannte und doppelte Labels sind
+Fehler, nie zitierte Einträge eine Warnung. `[@SS75]` geht zusätzlich, wenn das
+Deck `ld.extensions.citations: true` setzt (Default bleibt `false`, weil
+markdown-it dann auch ein nacktes `@name` im Fließtext als Zitat liest). Für
+konvertierte Decks also: `[X]\_` → `` {cite}`X` ``, das auskommentierte
+Verzeichnis → `{bibliography}`. Der Rest dieses Abschnitts beschreibt den
+Stand davor und den Roh-HTML-Workaround, der in bestehenden Decks noch steht.
+
+`citations: false` in `LectureDoc2Author/src/parse.js` — die
+MyST-`[@X]`-Syntax ist standardmäßig abgeschaltet. Der Konverter lässt die
+Referenzen als `[X]\_` stehen und **kommentiert das Literaturverzeichnis
+komplett aus** (`% [X]`), die Folie ist dann leer.
 
 **Benannte Fußnoten sind kein Ersatz** (ausprobiert und wieder verworfen):
 `[^X]` / `[^X]: …` baut zwar docutils-nahes Markup, aber `slide.css` setzt
@@ -351,8 +374,13 @@ nicht verloren gehen:
   Folienfuß positioniert. Mehrere Fußnoten auf einer Folie liegen deshalb
   übereinander. Sinnvoll wäre, alle Definitionen einer Folie in *eine* Liste zu
   ziehen.
-- Keine Unterstützung für Zitate (`citations: false`) — Literaturverzeichnisse
-  müssen als rohes HTML geschrieben werden (siehe oben).
+- ~~Keine Unterstützung für Zitate~~ — erledigt (Okt. 2026): `{cite}` +
+  `{bibliography}`, siehe Abschnitt 7b. Die Decks mit rohem
+  `citation-list`-HTML (z. B. `sec-passwortsicherheit`) sind noch nicht
+  umgestellt.
+- Die Folien-id wird aus dem Titeltext abgeleitet; ein `{cite}` im Titel trägt
+  nichts dazu bei (die Referenz hat keinen Text-Inhalt), ein rohes `<a>` dagegen
+  schon (s. Abschnitt 2).
 - Markup im Dokumenttitel wird verworfen (`u("text", node.title)` in
   `handlers.js`), obwohl `buildSlides` `titleNodes` weiterreicht.
 - `ldModule` gibt den Directive-Body mit `raw(node.value)` unescaped aus;
@@ -380,8 +408,10 @@ Die Punkte aus Abschnitt 1–4, die der Konverter selbst erledigen könnte:
 - Feldlisten-Terme mit führender Zahl escapen (`19\. Nov.`).
 - `(a)`-Aufzählungen → `{.loweralpha}` + `1.`.
 - `.. epigraph::`-Argument als ersten Absatz übernehmen.
-- Zitate: entweder als rohes `citation-list`-HTML ausgeben oder — besser —
-  `citations` in ld2 unterstützen.
+- Zitate: `[X]_` → `` {cite}`X` ``, `.. [X] …` → Eintrag in einem
+  `:::{bibliography}` (Definitionsliste) statt auskommentiert.
+- Interne Links (`` `Text <#id>`_ ``, `:ref:`) → `[Text](#id)` / `{ref}` statt
+  rohem HTML.
 
 ---
 
@@ -409,6 +439,37 @@ byte-identisch (Payloads ausgenommen).
   `<th class="stub">`, in den Kopfzeilen zu `<th class="stub head">` — genau
   wie docutils. Vorher wurde die Option mit einer Warnung ignoriert und die
   Stub-Spalte verlor Fettung/Zentrierung.
+
+---
+
+## 7b. Änderungen an ld2 (16. Okt. 2026): Zitate und interne Links
+
+- **`{bibliography}` / `{cite}`** (`src/directives/citations.js`,
+  `src/roles/index.js`, `resolveCitations` in `src/transforms/index.js`,
+  Handler in `src/render/handlers.js`, Tests in `test/citations.test.js`).
+  Markup gegen `rst2html5` (docutils) geprüft; einziger Unterschied: docutils
+  macht aus einem Eintrag, der mit `J. ` beginnt, eine Aufzählung
+  (`<ol class="upperalpha" start="10">`) — das ist ein docutils-Artefakt und
+  wird bewusst nicht nachgebaut. Nummerierung nach `buildSlides`, d. h. in
+  Folienreihenfolge, Titel eingeschlossen, `hide-slide`-Folien ausgenommen.
+  Das `{cite}` von mystmd (BibTeX, `cite:p`, `cite:t`, …) ist damit ersetzt.
+- **`(label)=` traf die vorherige Folie.** `myst-to-html`s `propagateTargets`
+  benutzt den Index im Elternknoten als Index in die Wurzel; nach
+  `buildSlides` ergab ein Target als erster Block von Folie B die id von
+  Folie A. Jetzt hängt `propagateTargets` (ld2) das Target vorher an, im
+  richtigen Elternknoten.
+- **`{ref}` und `[](#x)`**: `{ref}` wurde ein leeres `<div>` (kein Handler
+  für `crossReference`), `[…](#x)` ein `reference external` ohne
+  Sprungfunktion. Beide werden jetzt `reference internal`, ein leerer
+  Linktext wird durch den Folien-/Überschriftstitel ersetzt; ein unbekanntes
+  `{ref}`-Ziel ist ein Fehler.
+- **`{raw-html}` war „unknown role“**, sobald `ld.code-roles` einen Eintrag
+  `html` hat: `buildRoles` warf die ganze Rolle weg, weil ihr *Alias* `html`
+  kollidierte. Jetzt wird nur der Alias abgegeben.
+- Ein Definitionsinhalt, der nur aus `{cite}`/`{ref}` besteht, wird jetzt wie
+  anderer Inline-Inhalt in ein `<p>` gepackt (`INLINE_TYPES` ergänzt).
+- Diagnosen aus Transforms können über `note` einen Hinweis mitgeben
+  (`collectDiagnostics`).
 
 ---
 

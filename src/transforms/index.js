@@ -1,6 +1,6 @@
 /* mdast -> mdast transforms that run between parsing and rendering. */
 
-import { fileWarn } from "myst-common";
+import { fileError, fileWarn, normalizeLabel } from "myst-common";
 import { visit } from "unist-util-visit";
 
 import { DirectiveError, nodeError } from "../context.js";
@@ -627,6 +627,261 @@ export function buildSlides(tree, frontmatter = {}) {
 }
 
 /* ------------------------------------------------------------------------ */
+/* Document order                                                           */
+/* ------------------------------------------------------------------------ */
+
+/* Inline content that a node carries outside of `children` (see
+ * `extractTitles`), in the order it appears on the slide. */
+const LEADING_NODE_LISTS = ["titleNodes", "formattedTitle"];
+const TRAILING_NODE_LISTS = ["caption"];
+
+/**
+ * Visits every node in document order, *including* the titles that
+ * `unist-util-visit` does not see because they are not `children`: a
+ * reference in a slide title has to be found, and numbered before the ones
+ * on the slide.
+ */
+function walk(node, fn, parent) {
+    if (!node || typeof node !== "object") return;
+    fn(node, parent);
+    const lists = [
+        ...LEADING_NODE_LISTS.map((key) => node[key]),
+        node.children,
+        ...TRAILING_NODE_LISTS.map((key) => node[key]),
+    ];
+    for (const list of lists) {
+        if (!Array.isArray(list)) continue;
+        for (const child of list) walk(child, fn, node);
+    }
+}
+
+/* ------------------------------------------------------------------------ */
+/* Targets                                                                  */
+/* ------------------------------------------------------------------------ */
+
+/**
+ * `(label)=` gives the block that follows it an id.
+ *
+ * `myst-to-html` does this too (`propagateTargets`), but it looks the next
+ * node up with the target's index *in its parent* as an index *into the
+ * root* - which is only the same thing as long as the target sits at the top
+ * level. Once `buildSlides` has moved it into an `ldTopic`, a target that is
+ * the first block of slide 3 named slide 2. Done here, on the parent the
+ * target is actually in, nothing is left for `myst-to-html` to get wrong.
+ */
+export function propagateTargets(tree, vfile) {
+    walk(tree, (node) => {
+        if (!Array.isArray(node.children)) return;
+        if (!node.children.some((child) => child.type === "mystTarget")) {
+            return;
+        }
+        const children = [];
+        let pending = [];
+        for (const child of node.children) {
+            if (child.type === "mystTarget") {
+                pending.push(child);
+                continue;
+            }
+            for (const target of pending) {
+                const normalized = normalizeLabel(target.label);
+                if (!normalized) continue;
+                child.identifier = normalized.identifier;
+                child.label = normalized.label;
+            }
+            pending = [];
+            children.push(child);
+        }
+        for (const target of pending) {
+            if (vfile) {
+                fileWarn(
+                    vfile,
+                    `the target (${target.label})= has no block to attach ` +
+                        "to - it is the last thing in its container",
+                    { node: target, ruleId: "ld-targets" },
+                );
+            }
+        }
+        node.children = children;
+    });
+    return tree;
+}
+
+/* ------------------------------------------------------------------------ */
+/* Citations                                                                */
+/* ------------------------------------------------------------------------ */
+
+/**
+ * Matches the `{cite}` references with the `{bibliography}` entries the way
+ * docutils does:
+ *
+ * - every reference gets its own id, `citation-reference-N`, numbered in
+ *   document order;
+ * - an entry that is cited once links back from its label, one that is cited
+ *   several times lists all back links (`ldCitation.backrefs`);
+ * - an unknown label or a label defined twice is an error, an entry nobody
+ *   cites a warning (it is rendered without a back link).
+ *
+ * Runs after `buildSlides`, so that references on hidden slides are gone and
+ * the numbering follows the slides as they are shown. With
+ * `ld.extensions.citations: true` the Pandoc syntax `[@SS75]` ends up here
+ * too.
+ */
+export function resolveCitations(tree, vfile) {
+    const report = (node, message, hint) => {
+        if (!vfile) throw nodeError(node, message, { hint });
+        fileError(vfile, message, {
+            node,
+            note: hint,
+            ruleId: "ld-citations",
+        });
+    };
+
+    const citations = new Map();
+    walk(tree, (node) => {
+        if (node.type !== "ldCitation") return;
+        const existing = citations.get(node.identifier);
+        if (existing) {
+            const line = existing.position?.start?.line;
+            report(
+                node,
+                `the citation [${node.label}] is defined twice`,
+                `The first definition is [${existing.label}]` +
+                    (line ? ` in line ${line}` : "") +
+                    "; labels are compared ignoring case and punctuation.",
+            );
+            return;
+        }
+        node.backrefs = [];
+        citations.set(node.identifier, node);
+    });
+
+    // `[@SS75]` (mystmd's citation syntax) - the same nodes as `{cite}`.
+    walk(tree, (node) => {
+        if (!Array.isArray(node.children)) return;
+        node.children = node.children.flatMap((child) => {
+            if (child.type === "citeGroup") {
+                return (child.children ?? []).flatMap((cite, i) => [
+                    ...(i > 0 ? [{ type: "text", value: " " }] : []),
+                    cite,
+                ]);
+            }
+            return [child];
+        });
+        for (const child of node.children) {
+            if (child.type !== "cite") continue;
+            child.type = "ldCiteReference";
+            child.identifier = makeId(child.label ?? child.identifier);
+        }
+    });
+
+    let counter = 0;
+    walk(tree, (node) => {
+        if (node.type !== "ldCiteReference") return;
+        const citation = citations.get(node.identifier);
+        if (!citation) {
+            const known = [...citations.values()].map((c) => c.label);
+            report(
+                node,
+                `unknown citation [${node.label}]`,
+                known.length > 0
+                    ? `Known labels: ${known.join(", ")}.`
+                    : "The document has no `{bibliography}` entries.",
+            );
+            return;
+        }
+        counter += 1;
+        node.referenceId = `citation-reference-${counter}`;
+        citation.backrefs.push(node.referenceId);
+    });
+
+    for (const citation of citations.values()) {
+        if (citation.backrefs.length === 0 && vfile) {
+            fileWarn(vfile, `the citation [${citation.label}] is never cited`, {
+                node: citation,
+                ruleId: "ld-citations",
+            });
+        }
+    }
+    return tree;
+}
+
+/* ------------------------------------------------------------------------ */
+/* Cross references                                                         */
+/* ------------------------------------------------------------------------ */
+
+/** The text a reference to `node` shows when the author gave none. */
+function referenceText(node) {
+    if (node.titleNodes?.length) return toText(node.titleNodes);
+    if (node.type === "ldTopic" && node.title) return String(node.title);
+    if (node.type === "heading") return toText(node);
+    if (node.title) return String(node.title);
+    return undefined;
+}
+
+/**
+ * Internal links: `{ref}`label``, `{ref}`text <label>`` and `[text](#id)`.
+ *
+ * LectureDoc2 only jumps to a slide for links that carry docutils' classes
+ * `reference internal` (see `registerSlideInternalLinkClickedListener` in
+ * `ld.js`); a plain `<a href="#id">` merely changes the URL fragment. Both
+ * forms therefore become `ldInternalLink`s, and a link without text gets the
+ * title of its target, as in docutils/Sphinx.
+ */
+export function resolveCrossReferences(tree, vfile) {
+    const targets = new Map();
+    walk(tree, (node) => {
+        if (node.identifier && !targets.has(node.identifier)) {
+            if (node.type === "ldCiteReference") return;
+            if (node.type === "crossReference") return;
+            targets.set(node.identifier, node);
+        }
+    });
+
+    walk(tree, (node) => {
+        if (node.type === "crossReference") {
+            const id = node.identifier;
+            const target = targets.get(id);
+            if (!target && vfile) {
+                fileError(vfile, `unknown reference target: ${node.label}`, {
+                    node,
+                    note: "Give the target an id - `(label)=` before a block, `{#label}` after a heading.",
+                    ruleId: "ld-references",
+                });
+            }
+            const children = node.children?.length
+                ? node.children
+                : [
+                      {
+                          type: "text",
+                          value:
+                              (target && referenceText(target)) ??
+                              node.label ??
+                              id,
+                      },
+                  ];
+            node.type = "ldInternalLink";
+            node.url = `#${id}`;
+            node.children = children;
+            return;
+        }
+        if (node.type === "link" && /^#./.test(node.url ?? "")) {
+            const id = node.url.slice(1);
+            const target = targets.get(id);
+            node.type = "ldInternalLink";
+            if (!node.children?.length) {
+                node.children = [
+                    {
+                        type: "text",
+                        value: (target && referenceText(target)) ?? id,
+                    },
+                ];
+            }
+        }
+    });
+    return tree;
+}
+
+/* ------------------------------------------------------------------------ */
 /* Simple lists                                                             */
 /* ------------------------------------------------------------------------ */
 
@@ -864,6 +1119,7 @@ export function runTransforms(
     { frontmatter, substitutions, parseMyst, vfile },
 ) {
     liftDirectives(tree);
+    propagateTargets(tree, vfile);
     extractTitles(tree);
     unwrapTableContainers(tree);
     applyHeadingAttributes(tree);
@@ -872,6 +1128,8 @@ export function runTransforms(
     relocateFootnoteDefinitions(tree);
     markSimpleLists(tree);
     buildSlides(tree, frontmatter);
+    resolveCitations(tree, vfile);
+    resolveCrossReferences(tree, vfile);
     markIncrementalCards(tree);
     return tree;
 }

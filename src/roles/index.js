@@ -14,7 +14,7 @@
 
 import { normalizeLabel } from "myst-common";
 
-import { makeClasses, mergeClasses } from "../util.js";
+import { makeClasses, makeId, mergeClasses } from "../util.js";
 
 /*  Every role below accepts the inline attributes mystmd parses out of the
     role name - `{eng .incremental-2 #rail-1}`text``. `.class` arrives as the
@@ -55,6 +55,25 @@ const rawHtml = {
     body: { type: String, required: true },
     run(data) {
         return [{ type: "html", value: data.body }];
+    },
+};
+
+/**
+ * `{cite}`SS75`` -> a citation reference in docutils' form,
+ *
+ *     <a class="citation-reference" href="#ss75" id="citation-reference-1"
+ *        role="doc-biblioref">[SS75]</a>
+ *
+ * The label is resolved against the `{bibliography}` entries and numbered by
+ * `resolveCitations` once the whole document is known.
+ */
+const cite = {
+    name: "cite",
+    doc: "References an entry of a `{bibliography}`, like docutils' `[SS75]_`.",
+    body: { type: String, required: true },
+    run(data) {
+        const label = (data.body ?? "").trim();
+        return [{ type: "ldCiteReference", label, identifier: makeId(label) }];
     },
 };
 
@@ -129,7 +148,7 @@ export function classRole(name, classes) {
  */
 const plainCode = codeRole("code", undefined);
 
-export const builtinRoles = [rawHtml, incremental, plainCode];
+export const builtinRoles = [rawHtml, incremental, plainCode, cite];
 
 /**
  * Builds the full role list from the configuration.
@@ -162,9 +181,19 @@ export function buildRoles(roleConfig = {}, codeRoleConfig = {}) {
             ...(role.alias ?? []),
         ]),
     );
-    const builtins = builtinRoles.filter(
-        (role) => ![role.name, ...(role.alias ?? [])].some((n) => taken.has(n)),
-    );
+    /*
+     * Only the colliding *name* is given up: a code role `html` (a common
+     * entry in `ld.code-roles`) takes over the `html` alias of `raw-html`,
+     * but `{raw-html}` itself keeps working.
+     */
+    const builtins = builtinRoles
+        .filter((role) => !taken.has(role.name))
+        .map((role) => {
+            const alias = (role.alias ?? []).filter((n) => !taken.has(n));
+            return alias.length === (role.alias ?? []).length
+                ? role
+                : { ...role, alias };
+        });
     return [...custom, ...codeRoles, ...builtins];
 }
 
