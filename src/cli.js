@@ -42,6 +42,7 @@ import { loadConfig } from "./ld/config.js";
 import { emptyManifest, readManifest, writeManifest } from "./ld/manifest.js";
 import { findSources, planBuild, runBuild } from "./ld/build.js";
 import {
+    adoptPdfs,
     pdfCandidates,
     planPdf,
     runPdf,
@@ -58,17 +59,18 @@ Commands:
   build [file...]    MyST -> HTML, for documents whose HTML is out of date.
   serve [file...]    Build, then serve the whole project with live reload.
   watch              Build and publish on change. Does not generate PDFs.
-  pdf   [file...]    HTML -> PDF, where the HTML is newer than the PDF.
+  pdf   [file...]    HTML -> PDF, where the HTML changed since the last render.
                      Never runs automatically; this is the on-demand step.
   publish            Copy everything the .publish files name to the target.
   status             Show what build, pdf and publish would do. Changes nothing.
-  clean [file...]    Remove the generated HTML, PDFs, password files and the
-                     vendored KaTeX assets. Never touches the target folder.
+  clean [file...]    Remove the generated HTML, PDFs, PDF records, password
+                     files and the vendored KaTeX assets. Never touches the
+                     target folder.
 
 Options:
       --config <f>     ld.config.json (default: nearest one, upwards).
       --myst-config <f> myst.yml (default: nearest one, upwards).
-      --force          Rebuild / re-render regardless of timestamps.
+      --force          Rebuild / re-render even what is up to date.
   -n, --dry-run        Print what would happen, change nothing.
       --prune          publish: delete files the target should no longer have.
       --adopt          publish: start from an empty manifest.
@@ -325,9 +327,17 @@ async function cmdPdf(config, files, options) {
     const candidates = files.length
         ? files.map((f) => relPosix(config.root, path.resolve(f)))
         : pdfCandidates(config, { all: options.all });
-    const jobs = planPdf(config, candidates, { force: options.force });
+    const jobs = await planPdf(config, candidates, { force: options.force });
     const stale = jobs.filter((job) => job.stale);
 
+    if (!options["dry-run"]) {
+        const adopted = await adoptPdfs(jobs);
+        if (adopted.length > 0) {
+            console.log(
+                `recorded ${adopted.length} existing PDF(s) as up to date`,
+            );
+        }
+    }
     if (stale.length === 0) {
         console.log(`nothing to render (${jobs.length} PDF(s) up to date)`);
         return 0;
@@ -350,12 +360,12 @@ async function cmdPublish(config, options) {
     const prune = Boolean(options.prune);
     const problems = reportPlan(plan, { prune });
 
-    const stalePdfs = stalePublishedPdfs(config, plan);
+    const stalePdfs = await stalePublishedPdfs(config, plan);
     if (stalePdfs.length > 0) {
         // Warn, but publish: silently rendering here is exactly the behaviour
         // that made the old scripts expensive.
         console.warn(
-            `\n${stalePdfs.length} PDF(s) are older than their HTML and are ` +
+            `\n${stalePdfs.length} PDF(s) are out of date and are ` +
                 "being published anyway:",
         );
         for (const rel of stalePdfs) console.warn(`  ${rel}`);
@@ -423,7 +433,7 @@ async function cmdStatus(config) {
                   stale.map((s) => `${s.rel} (${s.reason})`).join("\n  ")
             : "build: up to date",
     );
-    const pdfs = planPdf(config, pdfCandidates(config, {})).filter(
+    const pdfs = (await planPdf(config, pdfCandidates(config, {}))).filter(
         (j) => j.stale,
     );
     console.log(

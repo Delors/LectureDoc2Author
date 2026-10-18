@@ -4,7 +4,7 @@ Replaces `generate-htmls.zsh` and `generate-pdfs.zsh`.
 
 ```
 ld2 build   [file...]   MyST -> HTML, only where the HTML is out of date
-ld2 pdf     [file...]   HTML -> PDF, only where the HTML is newer than the PDF
+ld2 pdf     [file...]   HTML -> PDF, only where the HTML changed since the last render
 ld2 publish             copy everything the .publish files name to the target
 ld2 watch               build + publish on change; never generates PDFs
 ld2 status              what all three would do; changes nothing
@@ -31,8 +31,17 @@ idle project costs nothing.
 
 **PDFs are never a side effect.** Rendering a deck launches a browser and walks
 every slide. `ld2 watch` will not do that to you mid-sentence; `ld2 pdf` is an
-explicit step. `ld2 publish` warns when it is about to ship a PDF older than its
-HTML, but publishes it anyway rather than silently spending the minutes.
+explicit step. `ld2 publish` warns when it is about to ship an out-of-date PDF,
+but publishes it anyway rather than silently spending the minutes.
+
+**A PDF is re-rendered only when its HTML's content changed.** Next to every
+`<deck>.md.html.pdf` sits `<deck>.md.html.pdf.json`, recording the SHA-256 of
+the HTML it was rendered from and the paper settings. A rebuild that produces
+the same HTML - touching `myst.yml` rebuilds every deck - therefore leaves the
+PDFs alone. That matters because Chrome stamps every PDF with the time it was
+printed: a needless re-render is a changed file in the target's git history.
+A PDF without a record is judged by the old rule (older than its HTML?) once and,
+if current, gets its record on the next `ld2 pdf` without being rendered.
 
 **Deletion is driven by a manifest.** `.ld-publish-state.json` records what this
 tool put into the target. `--prune` deletes what is recorded and no longer

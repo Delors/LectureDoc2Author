@@ -132,13 +132,14 @@ test("named documents limit the plan to those decks", async (t) => {
     assert.ok(there("deck-b/folien.de.md.html"));
 });
 
-test("artifactsOf names exactly the four build products", () => {
+test("artifactsOf names exactly the five build products", () => {
     const files = artifactsOf("/p", "deck/folien.de.md").map((f) =>
         path.relative("/p", f),
     );
     assert.deepEqual(files, [
         path.join("deck", "folien.de.md.html"),
         path.join("deck", "folien.de.md.html.pdf"),
+        path.join("deck", "folien.de.md.html.pdf.json"),
         path.join("deck", "folien.de.md.html.passwords.json"),
         path.join("deck", "folien.de.md.html.passwords.json.md"),
     ]);

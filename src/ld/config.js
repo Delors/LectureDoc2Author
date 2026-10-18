@@ -42,6 +42,7 @@ const DEFAULTS = {
         "**/Icon?",
         "**/*.passwords.json",
         "**/*.passwords.json.md",
+        "**/*.md.html.pdf.json",
     ],
 
     /*

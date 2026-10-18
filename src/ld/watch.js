@@ -34,6 +34,7 @@ const GENERATED = [
     "**/*.rst.html",
     "**/*.md.html.pdf",
     "**/*.rst.html.pdf",
+    "**/*.md.html.pdf.json",
     "**/*.passwords.json",
     "**/*.passwords.json.md",
 ];
