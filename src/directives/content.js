@@ -2,7 +2,6 @@
  * include-svg, global-information, source, include and literalinclude.
  */
 
-import fs from "node:fs";
 import path from "node:path";
 
 import {
@@ -13,15 +12,10 @@ import {
     currentSource,
     directiveError,
     markOrigin,
+    readDependency,
     withIncludedSource,
 } from "../context.js";
-import {
-    generatePassword,
-    makeClasses,
-    makeId,
-    titleNode,
-    toText,
-} from "../util.js";
+import { makeClasses, makeId, titleNode, toText } from "../util.js";
 import {
     CODE_PRESENTATION_OPTIONS,
     CODE_SELECTION_OPTIONS,
@@ -82,7 +76,10 @@ const solution = {
     name: "solution",
     doc: "The (encrypted) solution of the enclosing exercise.",
     options: {
-        pwd: { type: String, doc: "The password; generated when omitted." },
+        pwd: {
+            type: String,
+            doc: "The password; derived from the solution's source when omitted.",
+        },
         class: classOption,
     },
     body: { type: "myst", required: true },
@@ -93,14 +90,19 @@ const solution = {
                 data,
                 `:pwd: is too short (${pwd.length} characters); use at least 3`,
                 {
-                    hint: "Or leave `:pwd:` out entirely and a password is generated for you.",
+                    hint: "Or leave `:pwd:` out entirely and a password is derived from the solution.",
                 },
             );
         }
         return [
             {
                 type: "ldSolution",
-                pwd: pwd ?? generatePassword(),
+                pwd,
+                // Without `:pwd:`, `numberExercises` derives the password from
+                // the solution's MyST source (the body, without the options) -
+                // there, because the master password is known by then.
+                pwdSource:
+                    pwd === undefined ? (data.node.value ?? "") : undefined,
                 class: makeClasses(data.options?.class),
                 children: data.body ?? [],
             },
@@ -171,7 +173,7 @@ const includeSvg = {
         const svgPath = path.resolve(path.dirname(source), data.arg);
         let svg;
         try {
-            svg = fs.readFileSync(svgPath, "utf-8");
+            svg = readDependency(svgPath);
         } catch (error) {
             throw directiveError(
                 data,
@@ -329,7 +331,7 @@ const include = {
         const target = path.resolve(path.dirname(source), data.arg);
         let text;
         try {
-            text = fs.readFileSync(target, "utf-8");
+            text = readDependency(target);
         } catch (error) {
             throw directiveError(
                 data,
@@ -450,7 +452,7 @@ const literalInclude = {
         const target = path.resolve(path.dirname(source), data.arg);
         let text;
         try {
-            text = fs.readFileSync(target, "utf-8");
+            text = readDependency(target);
         } catch (error) {
             throw directiveError(
                 data,

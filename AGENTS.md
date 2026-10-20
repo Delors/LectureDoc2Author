@@ -10,8 +10,10 @@ Markdown decks into LectureDoc2 HTML.
 ## Layout
 
 - `src/` — `cli.js`, `build.js`, `config.js` (the `ld:` settings and how
-  `myst.yml` and frontmatter merge), `directives/`, `roles/`, `render/`,
-  `ld/` (build/publish/watch), `pdf/`
+  `myst.yml` and frontmatter merge), `dependencies.js` (the
+  `<deck>.md.html.json` record of what a deck was built from — a directive
+  that reads a file uses `readDependency` from `context.js`), `directives/`,
+  `roles/`, `render/`, `ld/` (build/publish/watch), `pdf/`
 - `test/` — `node:test` tests, one file per area
 - `shared/ld/` — assets meant for every deck, e.g. `svgs/` (the shared `ld-`
   SVG markers and classes)

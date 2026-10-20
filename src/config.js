@@ -16,6 +16,7 @@ import path from "node:path";
 import { load } from "js-yaml";
 
 import { DirectiveError } from "./context.js";
+import { readTracked } from "./dependencies.js";
 
 /*
  * `load`, but a syntax error comes out as something the author can act on.
@@ -231,10 +232,14 @@ export function findMystConfig(start) {
     }
 }
 
-export function loadMystConfig(configPath) {
+/**
+ * Loads `myst.yml`. With `dependencies` (see `dependencies.js`) the file is
+ * recorded as one of the document's dependencies.
+ */
+export function loadMystConfig(configPath, { dependencies } = {}) {
     if (!configPath)
         return { config: {}, root: process.cwd(), path: undefined };
-    const config = loadYaml(fs.readFileSync(configPath, "utf-8"), {
+    const config = loadYaml(readTracked(configPath, dependencies), {
         file: configPath,
         what: "the project configuration",
     });
@@ -260,12 +265,13 @@ export function splitFrontmatter(text, { file } = {}) {
  *
  * @param {string} projectRoot
  * @param {string|false} relativePath
+ * @param {{dependencies?: Map}} options records the file, like any other input
  */
-export function loadSecrets(projectRoot, relativePath) {
+export function loadSecrets(projectRoot, relativePath, { dependencies } = {}) {
     if (!relativePath) return {};
     const file = path.resolve(projectRoot, relativePath);
     if (!fs.existsSync(file)) return {};
-    return loadYaml(fs.readFileSync(file, "utf-8"), {
+    return loadYaml(readTracked(file, dependencies), {
         file,
         what: "the secrets file",
     });
@@ -305,11 +311,15 @@ function absolutePathLists(projectLd, projectRoot) {
     return out;
 }
 
-/** Merges project defaults, project `ld:` settings and document frontmatter. */
+/**
+ * Merges project defaults, project `ld:` settings and document frontmatter.
+ * `dependencies` is passed on to `loadSecrets`.
+ */
 export function resolveConfig({
     projectConfig = {},
     frontmatter = {},
     projectRoot = process.cwd(),
+    dependencies,
 }) {
     const project = projectConfig.project ?? {};
     const documentLd = frontmatter.ld ?? {};
@@ -323,7 +333,7 @@ export function resolveConfig({
     }
     // Secrets win over `myst.yml` so that a checked-in placeholder there cannot
     // shadow the real password.
-    ld = deepMerge(ld, loadSecrets(projectRoot, ld.secrets));
+    ld = deepMerge(ld, loadSecrets(projectRoot, ld.secrets, { dependencies }));
     // A document's own frontmatter, however, is a deliberate per-deck choice
     // and wins over the shared secrets file - otherwise a self-contained deck
     // (the example, a handout, a talk) would silently be encrypted with the

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { decryptAESGCM, encryptAESGCM } from "../src/crypto.js";
-import { generatePassword } from "../src/util.js";
+import { derivePassword } from "../src/util.js";
 
 test("encryption round-trips", async () => {
     const encrypted = await encryptAESGCM("secret", "<p>Lösung</p>");
@@ -29,6 +29,25 @@ test("a wrong password fails", async () => {
     await assert.rejects(() => decryptAESGCM("wrong", encrypted));
 });
 
-test("generated passwords are grouped by three", () => {
-    assert.match(generatePassword(9), /^[a-z]{3}-[a-z]{3}-[a-z]{3}$/);
+test("derived passwords are grouped by three", () => {
+    assert.match(
+        derivePassword("Zwei.", undefined, 9),
+        /^[a-z]{3}-[a-z]{3}-[a-z]{3}$/,
+    );
+    assert.match(
+        derivePassword("Zwei.", "master"),
+        /^[a-z]{3}-[a-z]{3}-[a-z]{2}$/,
+    );
+});
+
+test("derived passwords depend on the source and the key only", () => {
+    assert.equal(derivePassword("Zwei."), derivePassword("Zwei."));
+    assert.equal(derivePassword("Zwei.", "m"), derivePassword("Zwei.", "m"));
+    const variants = new Set([
+        derivePassword("Zwei."),
+        derivePassword("Drei."),
+        derivePassword("Zwei.", "m"),
+        derivePassword("Zwei.", "n"),
+    ]);
+    assert.equal(variants.size, 4);
 });

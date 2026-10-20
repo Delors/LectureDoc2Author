@@ -32,6 +32,7 @@ import { relPosix } from "./fsutil.js";
 const GENERATED = [
     "**/*.md.html",
     "**/*.rst.html",
+    "**/*.md.html.json",
     "**/*.md.html.pdf",
     "**/*.rst.html.pdf",
     "**/*.md.html.pdf.json",

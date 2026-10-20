@@ -5,15 +5,17 @@
  * *which* documents need it.
  */
 
+import fs from "node:fs";
 import path from "node:path";
 
 import { convertFile, outputNameFor } from "../build.js";
 import { attributeError } from "../context.js";
+import { readRecord, sha256Of, writeRecordFile } from "../dependencies.js";
 import { strictFailure } from "../diagnostics.js";
 import { reportDiagnostic, reportError } from "../report.js";
 
 import { matchesAny } from "./glob.js";
-import { exists, mtimeOrZero, walk } from "./fsutil.js";
+import { exists, relPosix, walk } from "./fsutil.js";
 
 /** Every source document, as paths relative to the project root. */
 export function findSources(config) {
@@ -23,34 +25,100 @@ export function findSources(config) {
 }
 
 /**
+ * Whether the document whose HTML is `out` has to be rebuilt.
+ *
+ * Judged by its record (see `../dependencies.js`), one entry per file it was
+ * built from. An entry whose mtime is unchanged costs a `stat`; one whose mtime
+ * moved is hashed, and only a different hash makes the deck stale. When every
+ * moved file turns out to have the same content, `refresh` is the record with
+ * the new mtimes - written by `refreshRecords`, so that the next check is a
+ * plain `stat` again.
+ *
+ * @returns {{reason: string|null, refresh: object|null}}
+ */
+export function assessDocument(out) {
+    if (!exists(out)) return { reason: "missing", refresh: null };
+    const record = readRecord(out);
+    if (!record) return { reason: "no dependency record", refresh: null };
+
+    const dir = path.dirname(out);
+    let moved = null;
+    for (const [rel, entry] of Object.entries(record.dependencies)) {
+        const file = path.resolve(dir, rel);
+        let mtime;
+        try {
+            mtime = fs.statSync(file).mtimeMs;
+        } catch {
+            return { reason: `${rel} is gone`, refresh: null };
+        }
+        if (mtime === entry?.mtime) continue;
+        let sha256;
+        try {
+            sha256 = sha256Of(fs.readFileSync(file));
+        } catch {
+            return { reason: `${rel} is gone`, refresh: null };
+        }
+        if (sha256 !== entry?.sha256) {
+            return { reason: `${rel} changed`, refresh: null };
+        }
+        moved ??= structuredClone(record);
+        moved.dependencies[rel] = { ...entry, mtime };
+    }
+    return { reason: null, refresh: moved };
+}
+
+/**
  * Splits the sources into the ones that need rebuilding and the ones that do
  * not.
  *
- * A document is stale when its HTML is missing or older than the source, or
- * older than `myst.yml` - the project configuration feeds into every document,
- * so changing it invalidates all of them. Nothing else is tracked: an image
- * swapped underneath a deck will not trigger a rebuild, which is what `--force`
- * is for.
+ * A document is stale when its HTML is missing, when it has no record of what
+ * it was built from, or when one of those files is gone or has different
+ * content now - see `assessDocument`. `myst.yml` is one of them, so changing it
+ * still invalidates every deck. Not tracked is the toolchain itself: after
+ * updating ld2 (or mystmd, KaTeX, ...), `--force` rebuilds everything.
+ *
+ * `refresh` lists the fresh documents whose record only needs new mtimes;
+ * `refreshRecords` writes them. Kept apart so that `ld2 status` can plan
+ * without writing anything.
+ *
+ * @param {object|null} config the project configuration; may be `null` when
+ *   `files` is given
+ * @param {object} options
+ *   - `only` - project-relative sources instead of all of them
+ *   - `files` - absolute (or cwd-relative) paths instead, for `ld2 serve`,
+ *     which also works on loose files without a project configuration
+ *   - `outFor` - the HTML of a source, when it is not next to it (`--out`,
+ *     `--out-dir`)
  */
-export function planBuild(config, { force = false, only = null } = {}) {
-    const configMtime = mtimeOrZero(path.join(config.root, "myst.yml"));
-    const sources = (only ?? findSources(config)).map((rel) => {
-        const src = path.resolve(config.root, rel);
-        const out = outputNameFor(src);
-        const outMtime = mtimeOrZero(out);
-        const reason = !exists(out)
-            ? "missing"
-            : outMtime < mtimeOrZero(src)
-              ? "source is newer"
-              : outMtime < configMtime
-                ? "myst.yml is newer"
-                : null;
-        return { rel, src, out, reason };
+export function planBuild(
+    config,
+    { force = false, only = null, files = null, outFor = outputNameFor } = {},
+) {
+    const sources = (
+        files
+            ? files.map((file) => path.resolve(file))
+            : (only ?? findSources(config)).map((rel) =>
+                  path.resolve(config.root, rel),
+              )
+    ).map((src) => {
+        const out = outFor(src);
+        const { reason, refresh } = assessDocument(out);
+        const rel = config ? relPosix(config.root, src) : src;
+        return { rel, src, out, reason, refresh };
     });
     return {
         stale: sources.filter((s) => force || s.reason),
         fresh: sources.filter((s) => !force && !s.reason),
+        refresh: sources.filter((s) => !force && !s.reason && s.refresh),
     };
+}
+
+/** Writes the records `planBuild` found only needing new mtimes. */
+export function refreshRecords(plan) {
+    for (const { out, refresh } of plan.refresh) {
+        writeRecordFile(out, refresh);
+    }
+    return plan.refresh.length;
 }
 
 /**

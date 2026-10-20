@@ -9,7 +9,7 @@ Node between writing a deck and it being on a website.
 
 ```sh
 ld2 build      # MyST Markdown -> LectureDoc2 HTML, only what is stale
-ld2 serve      # build, serve the whole project, watch, live reload
+ld2 serve      # build what is stale, serve the project, watch, live reload
 ld2 watch      # build and publish on change; never renders PDFs
 ld2 pdf        # HTML -> PDF via headless Chrome, on demand
 ld2 publish    # copy what the .publish files name to the target folder
@@ -22,8 +22,17 @@ ld2 clean      # remove what build and pdf generated
 Drawings — `{include-svg}`, deck CSS and definitions, the shared `ld-` SVG
 markers and classes — are covered by [docs-svgs.md](docs-svgs.md).
 
-`clean` derives what to delete from the sources — `<deck>.md.html`, its PDF and
-the two password files, plus the vendored KaTeX directory — so a generated file
+A deck is stale when its HTML is missing or a file it was built from has
+different content — its source, `myst.yml`, the secrets file, the included
+styles and globals, and every file an `{include}`, `{include-svg}`,
+`{literalinclude}`, `{module} :source:` or `{csv-table} :file:` read. Those are
+listed, with mtime and SHA-256, in `<deck>.md.html.json` next to the HTML, so
+`serve` with a hundred decks rebuilds only the ones a save affects. The
+toolchain is not tracked: after updating it, pass `--force`. Details in
+[docs-publishing.md](docs-publishing.md).
+
+`clean` derives what to delete from the sources — `<deck>.md.html` and its
+record, its PDF and the two password files, plus the vendored KaTeX directory — so a generated file
 whose `.md` was renamed away is left alone rather than guessed about. It never
 touches the target folder (`publish --prune` owns that), the publish manifest,
 the secrets or a submodule's `dist/`. `ld2 clean -n` lists what would go.
@@ -287,6 +296,13 @@ Whenever a deck contains exercises, two files are written next to the slides:
 Both contain secrets and belong in `.gitignore` (`*.passwords.json*`). Set
 `ld.passwords: false` to disable, or give a path to write a single fixed file.
 
+A `{solution}` without `:pwd:` gets a password derived from its MyST source
+(the body, not the options): an HMAC-SHA-256 keyed with the `master-password`,
+or the plain SHA-256 of the source when there is no master password. The
+password therefore stays the same from build to build until the solution is
+edited, and a new master password (e.g. per semester) changes all of them.
+Identical solutions get identical passwords; use `:pwd:` to pin one.
+
 ## Slides
 
 Every **level-1 heading starts a new slide**; whatever precedes the first
@@ -473,9 +489,8 @@ uses (`:lines:`, `:start-line:`/`:end-line:`, `:start-at:`/`:end-at:`,
 `:source:` together with an inline body is an error, and so is a selection
 option without `:source:`.
 
-Note that `ld2 build` and `ld2 watch` do not yet track the file as a dependency
-of the deck — as with `{include}` and `{literalinclude}`, editing it alone
-rebuilds nothing. `ld2 serve` rebuilds everything and is unaffected.
+Like every file a deck reads, the `:source:` file is a dependency of the deck:
+editing it rebuilds the deck in `ld2 build`, `watch` and `serve`.
 
 ### Raw HTML
 

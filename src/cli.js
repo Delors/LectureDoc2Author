@@ -40,7 +40,12 @@ import { serve } from "./serve.js";
 
 import { loadConfig } from "./ld/config.js";
 import { emptyManifest, readManifest, writeManifest } from "./ld/manifest.js";
-import { findSources, planBuild, runBuild } from "./ld/build.js";
+import {
+    findSources,
+    planBuild,
+    refreshRecords,
+    runBuild,
+} from "./ld/build.js";
 import {
     adoptPdfs,
     pdfCandidates,
@@ -51,7 +56,7 @@ import {
 import { planClean, runClean } from "./ld/clean.js";
 import { applyPlan, planIsEmpty, planPublish } from "./ld/publish.js";
 import { watch } from "./ld/watch.js";
-import { relPosix } from "./ld/fsutil.js";
+import { exists, relPosix } from "./ld/fsutil.js";
 
 const USAGE = `Usage: ld2 <command> [options] [file...]
 
@@ -70,7 +75,8 @@ Commands:
 Options:
       --config <f>     ld.config.json (default: nearest one, upwards).
       --myst-config <f> myst.yml (default: nearest one, upwards).
-      --force          Rebuild / re-render even what is up to date.
+      --force          Rebuild / re-render even what is up to date - e.g.
+                       after updating the toolchain, which is not tracked.
   -n, --dry-run        Print what would happen, change nothing.
       --prune          publish: delete files the target should no longer have.
       --adopt          publish: start from an empty manifest.
@@ -106,19 +112,23 @@ function documentsFor(config, files, options) {
     return findSources(config).map((rel) => path.join(config.root, rel));
 }
 
-/** Converts one document; shared by `build` and `serve`. */
-async function convertOne(file, options) {
-    const out = options.out
+/** Where the HTML of `file` goes, given `--out` / `--out-dir`. */
+function outputFor(file, options) {
+    return options.out
         ? path.resolve(options.out)
         : options["out-dir"]
           ? path.join(
                 path.resolve(options["out-dir"]),
                 outputNameFor(path.basename(file)),
             )
-          : undefined;
+          : outputNameFor(path.resolve(file));
+}
+
+/** Converts one document; shared by `build` and `serve`. */
+async function convertOne(file, options) {
     const started = Date.now();
     const result = await convertFile(file, {
-        out,
+        out: outputFor(file, options),
         config: options["myst-config"],
         formatHtml: options.pretty,
     });
@@ -234,7 +244,9 @@ async function cmdBuild(config, files, options) {
     const only = files.length
         ? files.map((f) => relPosix(config.root, path.resolve(f)))
         : null;
-    const { stale, fresh } = planBuild(config, { force: options.force, only });
+    const plan = planBuild(config, { force: options.force, only });
+    const { stale, fresh } = plan;
+    refreshRecords(plan);
     if (stale.length === 0) {
         console.log(
             `nothing to build (${fresh.length} document(s) up to date)`,
@@ -268,19 +280,56 @@ function serverRoot(config, options, files) {
     return mystConfig ? path.dirname(mystConfig) : process.cwd();
 }
 
+/**
+ * Builds what is stale, serves the project, and on every change rebuilds what
+ * is stale *then*.
+ *
+ * "Stale" is decided by the records the builds leave next to the HTML (see
+ * `planBuild`), not by which paths the watcher reported: those are coarse -
+ * editors save through temporary files, events get coalesced, and a deck whose
+ * last build failed has to be retried whatever changed. Re-planning a hundred
+ * decks is a few hundred `stat` calls; rebuilding them was the minute this
+ * replaces.
+ */
 async function cmdServe(config, files, options) {
     const documents = documentsFor(config, files, options);
-    console.log(`building ${documents.length} document(s):`);
     const buildRoot = config?.root ?? process.cwd();
-    const results = [];
-    for (const file of documents) {
-        results.push(
-            await convertOneReporting(file, options, { root: buildRoot }),
+    const show = (src) => path.relative(buildRoot, src);
+
+    const planServed = ({ force = false } = {}) => {
+        const plan = planBuild(config, {
+            files: documents,
+            force,
+            outFor: (file) => outputFor(file, options),
+        });
+        refreshRecords(plan);
+        return plan;
+    };
+    const buildStale = async (plan, { explain = false } = {}) => {
+        const results = [];
+        for (const { src, reason } of plan.stale) {
+            if (explain) console.log(`  ${show(src)}: ${reason}`);
+            results.push(
+                await convertOneReporting(src, options, { root: buildRoot }),
+            );
+        }
+        return results;
+    };
+
+    const plan = planServed({ force: options.force });
+    if (plan.stale.length === 0) {
+        console.log(
+            `nothing to build (${plan.fresh.length} document(s) up to date)`,
+        );
+    } else {
+        console.log(
+            `building ${plan.stale.length} of ${documents.length} document(s):`,
         );
     }
+    const results = await buildStale(plan);
     /*
-     * Reported, not fatal: a broken deck must not keep the other twelve from
-     * being served. The watcher below rebuilds it as soon as it is fixed.
+     * Reported, not fatal: a broken deck must not keep the others from being
+     * served. It stays stale, so every pass retries it until it is fixed.
      */
     reportSummary(results, { root: buildRoot });
 
@@ -296,11 +345,12 @@ async function cmdServe(config, files, options) {
     });
     console.log(`\nserving ${root}\n  ${server.url}`);
     if (!options["no-open"]) {
-        for (const { result } of results) {
-            // A document that failed has no output to link to; the others are
-            // served regardless, which is the point of not aborting above.
-            if (!result?.outPath) continue;
-            const rel = relPosix(root, result.outPath);
+        for (const file of documents) {
+            // A document that never built has no output to link to; the
+            // others are served regardless.
+            const out = outputFor(file, options);
+            if (!exists(out)) continue;
+            const rel = relPosix(root, out);
             if (!rel.startsWith("..")) console.log(`  ${server.url}/${rel}`);
         }
     }
@@ -313,11 +363,28 @@ async function cmdServe(config, files, options) {
             pollFiles: documents.map((f) => path.resolve(f)),
             statePath: config?.statePath,
         },
-        async () => {
-            for (const file of documents) {
-                await convertOneReporting(file, options, { root: buildRoot });
+        async (paths) => {
+            const pass = planServed();
+            if (pass.stale.length > 0) {
+                const time = new Date().toTimeString().slice(0, 8);
+                console.log(
+                    `\n[${time}] building ${pass.stale.length} document(s):`,
+                );
+                await buildStale(pass, { explain: true });
             }
-            await server.reload();
+            /*
+             * The browser reloads after a rebuild, and after a change to
+             * anything that is not Markdown: an image, a stylesheet,
+             * LectureDoc2's own files - what the open page may load directly
+             * and no build would ever pick up. A Markdown file that no served
+             * deck depends on, i.e. an edit to some other deck, does neither.
+             */
+            if (
+                pass.stale.length > 0 ||
+                paths.some((rel) => !rel.endsWith(".md"))
+            ) {
+                server.reload();
+            }
         },
     );
     await new Promise(() => {});
@@ -462,7 +529,9 @@ async function cmdWatch(config, options = {}) {
         console.log(
             `\n[${new Date().toTimeString().slice(0, 8)}] ${paths.length} change(s)`,
         );
-        const { stale } = planBuild(config, {});
+        const build = planBuild(config, {});
+        const { stale } = build;
+        refreshRecords(build);
         if (stale.length > 0) {
             const results = await runBuild(config, stale, {
                 debug: debugEnabled(options),

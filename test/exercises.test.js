@@ -9,11 +9,12 @@ import {
     numberExercises,
     runTransforms,
 } from "../src/transforms/index.js";
+import { derivePassword } from "../src/util.js";
 
 async function build(markdown, { masterPassword } = {}) {
     const tree = parse(markdown, createParseOptions({}));
     runTransforms(tree, { frontmatter: {} });
-    const passwords = numberExercises(tree);
+    const passwords = numberExercises(tree, { masterPassword });
     const renderer = createRenderer({ lang: "de" });
     await encryptProtectedContent(tree, renderer.renderFragment, {
         masterPassword,
@@ -46,6 +47,38 @@ test("solutions are encrypted and can be decrypted again", async () => {
     assert.ok(match, "the solution should be encrypted");
     const plaintext = await decryptAESGCM("geheim", match[1]);
     assert.match(plaintext, /<p>Zwei\.<\/p>/);
+});
+
+const withoutPwd = (solution, cls = "") => `::::{exercise} Aufgabe A
+Was ist 1 + 1?
+
+:::{solution}
+${cls}
+${solution}
+:::
+::::`;
+
+test("a solution without :pwd: gets a password derived from its source", async () => {
+    const first = await build(withoutPwd("Zwei."));
+    const again = await build(withoutPwd("Zwei."));
+    assert.equal(first.html, again.html);
+    const [{ pwd }] = first.passwords;
+    assert.equal(pwd, derivePassword("Zwei."));
+    const match = /data-encrypted="true">([^<]+)</.exec(first.html);
+    assert.match(await decryptAESGCM(pwd, match[1]), /<p>Zwei\.<\/p>/);
+});
+
+test("the derived password is keyed with the master password", async () => {
+    const pwdOf = async (solution, masterPassword, cls) =>
+        (await build(withoutPwd(solution, cls), { masterPassword }))
+            .passwords[0].pwd;
+    const keyed = await pwdOf("Zwei.", "master");
+    assert.equal(keyed, derivePassword("Zwei.", "master"));
+    assert.notEqual(keyed, await pwdOf("Zwei."));
+    assert.notEqual(keyed, await pwdOf("Zwei.", "other"));
+    assert.notEqual(keyed, await pwdOf("Drei.", "master"));
+    // Only the body counts, not the options.
+    assert.equal(keyed, await pwdOf("Zwei.", "master", ":class: x\n"));
 });
 
 test("a solution without an exercise is rejected", async () => {

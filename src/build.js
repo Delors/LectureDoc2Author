@@ -5,6 +5,7 @@ import path from "node:path";
 
 import { VFile } from "vfile";
 
+import { readTracked, writeRecord } from "./dependencies.js";
 import { createParseOptions, parse } from "./parse.js";
 import { projectHref, relativeHref, vendorKatex } from "./assets.js";
 import {
@@ -84,10 +85,11 @@ function toCamel(key) {
  *
  * A relative entry is resolved against the document's directory; entries from
  * `myst.yml` are already absolute (see `absolutePathLists` in `config.js`).
+ * Each file is recorded in `dependencies`.
  *
  * @returns {{contents: string[], paths: string[]}}
  */
-function readListedFiles(ld, key, documentDir) {
+function readListedFiles(ld, key, documentDir, dependencies) {
     const entries = ldList(ld, key);
     const contents = [];
     const paths = [];
@@ -106,7 +108,7 @@ function readListedFiles(ld, key, documentDir) {
         if (paths.includes(file)) continue;
         paths.push(file);
         try {
-            contents.push(fs.readFileSync(file, "utf-8"));
+            contents.push(readTracked(file, dependencies));
         } catch (error) {
             throw new DirectiveError(
                 `ld.${key}: cannot read "${entry}": ${error.code ?? error.message}`,
@@ -142,9 +144,15 @@ export function outputNameFor(source) {
  */
 export async function convertFile(source, options = {}) {
     const sourcePath = path.resolve(source);
+    /*
+     * Every file this document is built from, beyond the toolchain: filled by
+     * each read below and by the directives (through the parsing context), and
+     * written next to the HTML as `<deck>.md.html.json`. See dependencies.js.
+     */
+    const dependencies = new Map();
     let text;
     try {
-        text = fs.readFileSync(sourcePath, "utf-8");
+        text = readTracked(sourcePath, dependencies);
     } catch (error) {
         throw new DirectiveError(
             `cannot read the document: ${error.code ?? error.message}`,
@@ -161,7 +169,7 @@ export async function convertFile(source, options = {}) {
      * decks.
      */
     try {
-        return await convertDocument(sourcePath, split, options);
+        return await convertDocument(sourcePath, split, options, dependencies);
     } catch (error) {
         throw attributeError(error, {
             file: sourcePath,
@@ -182,14 +190,21 @@ function ldKeyFindings(ld, file) {
     }));
 }
 
-async function convertDocument(sourcePath, split, options = {}) {
+async function convertDocument(sourcePath, split, options, dependencies) {
     const { frontmatter, body, offset: frontmatterOffset } = split;
 
     const configPath =
         options.config ?? findMystConfig(path.dirname(sourcePath));
-    const { config: projectConfig, root: projectRoot } =
-        loadMystConfig(configPath);
-    const resolved = resolveConfig({ projectConfig, frontmatter, projectRoot });
+    const { config: projectConfig, root: projectRoot } = loadMystConfig(
+        configPath,
+        { dependencies },
+    );
+    const resolved = resolveConfig({
+        projectConfig,
+        frontmatter,
+        projectRoot,
+        dependencies,
+    });
     const ld = resolved.ld;
 
     const outPath = path.resolve(options.out ?? outputNameFor(sourcePath));
@@ -211,7 +226,7 @@ async function convertDocument(sourcePath, split, options = {}) {
      * file as the current source for the duration.
      */
     const parseNested = (text) => parse(text, parseOptions);
-    const contextOptions = { root: projectRoot, parseNested };
+    const contextOptions = { root: projectRoot, parseNested, dependencies };
 
     const { result: tree } = withContext(
         sourcePath,
@@ -245,8 +260,8 @@ async function convertDocument(sourcePath, split, options = {}) {
             ).result,
     });
 
-    const passwords = numberExercises(tree);
     const masterPassword = ld["master-password"] ?? ld.masterPassword;
+    const passwords = numberExercises(tree, { masterPassword });
 
     /* --------------------------------------------------------- renderer */
 
@@ -303,21 +318,23 @@ async function convertDocument(sourcePath, split, options = {}) {
      * block, which is what makes a rule findable in the devtools.
      */
     const documentDir = path.dirname(sourcePath);
-    const includedStyles = readListedFiles(ld, "include-styles", documentDir);
-    const includedGlobals = readListedFiles(ld, "include-globals", documentDir);
+    const includedStyles = readListedFiles(
+        ld,
+        "include-styles",
+        documentDir,
+        dependencies,
+    );
+    const includedGlobals = readListedFiles(
+        ld,
+        "include-globals",
+        documentDir,
+        dependencies,
+    );
     const inlineStyles = ldList(ld, "styles").filter(Boolean).map(String);
     const inlineGlobals = ldList(ld, "globals").filter(Boolean).map(String);
 
     const styleBlocks = [...includedStyles.contents, ...inlineStyles];
     const globalBlocks = [...includedGlobals.contents, ...inlineGlobals];
-
-    /*
-     * Everything this document was built from, beyond its own source. Nothing
-     * consumes it yet - `planBuild` still calls a deck stale by the mtime of
-     * the `.md` alone - but the information has to be collected where it is
-     * known, and this is that place.
-     */
-    const dependencies = [...includedStyles.paths, ...includedGlobals.paths];
 
     /* ------------------------------------------------------------- output */
 
@@ -352,6 +369,12 @@ async function convertDocument(sourcePath, split, options = {}) {
     });
 
     fs.writeFileSync(outPath, html, "utf-8");
+    /*
+     * After the HTML, never before: a record next to an HTML file vouches for
+     * it. Should the process die in between, the old record no longer matches
+     * the files and the next run rebuilds.
+     */
+    writeRecord(outPath, dependencies);
 
     /* ---------------------------------------------------------- passwords */
 
@@ -442,7 +465,7 @@ async function convertDocument(sourcePath, split, options = {}) {
         outPath,
         passwords,
         passwordFiles,
-        dependencies,
+        dependencies: [...dependencies.keys()],
         warnings: mathWarnings,
         messages: vfile.messages,
         diagnostics,

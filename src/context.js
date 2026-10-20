@@ -22,6 +22,8 @@
  * *precise* rather than merely attributed.
  */
 
+import { readTracked } from "./dependencies.js";
+
 let context = null;
 
 /**
@@ -39,11 +41,14 @@ let context = null;
  *     file with this document's parser. Optional: without it `include` falls
  *     back to mystmd's own recursion, which cannot attribute errors to the
  *     included file.
+ *   - `dependencies` - the document's collector (see `dependencies.js`); every
+ *     file a directive reads through `readDependency` is recorded in it.
+ *     Optional: without it nothing is recorded.
  */
 export function withContext(
     source,
     fn,
-    { root, frontmatterOffset = 0, parseNested } = {},
+    { root, frontmatterOffset = 0, parseNested, dependencies } = {},
 ) {
     const previous = context;
     context = {
@@ -51,6 +56,7 @@ export function withContext(
         root: root ?? process.cwd(),
         frontmatterOffset,
         parseNested,
+        dependencies,
         includeStack: [],
     };
     try {
@@ -112,6 +118,15 @@ export function currentFrontmatterOffset() {
 /** `(text) => tree`, or `undefined` outside a full build. */
 export function currentParseNested() {
     return context?.parseNested;
+}
+
+/**
+ * Reads a file a directive needs, as UTF-8, and records it as a dependency of
+ * the document being built - which is what lets `ld2` rebuild a deck when only
+ * an included file changed. Throws the usual `fs` errors.
+ */
+export function readDependency(file) {
+    return readTracked(file, context?.dependencies);
 }
 
 /** Where the current document was included from, innermost first. */

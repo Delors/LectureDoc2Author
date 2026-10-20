@@ -167,7 +167,10 @@ test("a file listed in myst.yml and in the deck is included once", async () => {
         { config: PROJECT("    include-globals:\n      - shared/defs.svg\n") },
     );
     assert.equal(html.split('id="shared-defs"').length - 1, 1);
-    assert.equal(dependencies.length, 1);
+    assert.equal(
+        dependencies.filter((file) => file.endsWith("defs.svg")).length,
+        1,
+    );
 });
 
 test("inline styles and globals accumulate, too - in both spellings", async () => {
@@ -216,7 +219,12 @@ test("the files a deck was built from are reported as dependencies", async () =>
         "deck/a.css": ".a {}\n",
         "deck/folien.de.md": DECK("  include-styles:\n    - a.css\n"),
     });
-    assert.deepEqual(dependencies, [path.join(root, "deck", "a.css")]);
+    // In the order they were read: the deck, the project, then its styles.
+    assert.deepEqual(dependencies, [
+        path.join(root, "deck", "folien.de.md"),
+        path.join(root, "myst.yml"),
+        path.join(root, "deck", "a.css"),
+    ]);
 });
 
 test("an ld key nothing reads is a warning with a suggestion", async () => {

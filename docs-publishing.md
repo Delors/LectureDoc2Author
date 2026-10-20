@@ -22,7 +22,7 @@ ld2 publish --prune -n      # review
 ld2 publish --prune         # ship
 ```
 
-## The three things that changed
+## The four things that changed
 
 **No polling.** The old loop woke every three seconds, globbed the whole tree
 and listed the target directory, forever. `ld2 watch` uses `fs.watch(…,
@@ -34,10 +34,21 @@ every slide. `ld2 watch` will not do that to you mid-sentence; `ld2 pdf` is an
 explicit step. `ld2 publish` warns when it is about to ship an out-of-date PDF,
 but publishes it anyway rather than silently spending the minutes.
 
+**A deck is rebuilt only when a file it was built from changed.** Next to every
+`<deck>.md.html` sits `<deck>.md.html.json`, listing every file the converter
+read for it - the deck, `myst.yml`, the secrets file, the `include-styles` and
+`include-globals` lists, and whatever `{include}`, `{include-svg}`,
+`{literalinclude}`, `{module} :source:` and `{csv-table} :file:` pulled in -
+each with its mtime and SHA-256. A deck is stale when one of them is gone or
+has different content: an unchanged mtime costs a `stat`, a changed one is
+hashed, and a file that was merely touched only gets its new mtime recorded.
+`build`, `watch`, `status` and `serve` all decide this way. The toolchain itself
+is not tracked: after updating ld2 (or mystmd, KaTeX, …) run `ld2 build --force`.
+
 **A PDF is re-rendered only when its HTML's content changed.** Next to every
 `<deck>.md.html.pdf` sits `<deck>.md.html.pdf.json`, recording the SHA-256 of
 the HTML it was rendered from and the paper settings. A rebuild that produces
-the same HTML - touching `myst.yml` rebuilds every deck - therefore leaves the
+the same HTML - editing `myst.yml` rebuilds every deck - therefore leaves the
 PDFs alone. That matters because Chrome stamps every PDF with the time it was
 printed: a needless re-render is a changed file in the target's git history.
 A PDF without a record is judged by the old rule (older than its HTML?) once and,

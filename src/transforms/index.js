@@ -5,6 +5,7 @@ import { visit } from "unist-util-visit";
 
 import { DirectiveError, nodeError } from "../context.js";
 import {
+    derivePassword,
     INLINE_TYPES,
     makeClasses,
     makeId,
@@ -999,9 +1000,12 @@ export function markIncrementalCards(tree) {
 /**
  * Numbers exercises and collects their solution passwords.
  *
+ * A solution without `:pwd:` gets one derived from its source, keyed with the
+ * master password if there is one (see `derivePassword`).
+ *
  * @returns {{title: string, pwd: string}[]}
  */
-export function numberExercises(tree) {
+export function numberExercises(tree, { masterPassword } = {}) {
     const passwords = [];
     let count = 0;
 
@@ -1043,6 +1047,7 @@ export function numberExercises(tree) {
         }
         for (const solution of solutions) {
             claimed.add(solution);
+            solution.pwd ??= derivePassword(solution.pwdSource, masterPassword);
             passwords.push({ title, pwd: solution.pwd });
         }
     });

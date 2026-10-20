@@ -2,10 +2,9 @@
  * `container`, `rubric`, `code` (with `:number-lines:`) and `csv-table`.
  */
 
-import fs from "node:fs";
 import path from "node:path";
 
-import { currentSource, directiveError } from "../context.js";
+import { currentSource, directiveError, readDependency } from "../context.js";
 import { makeClasses, parseFragment, parseInline, titleNode } from "../util.js";
 import { CODE_PRESENTATION_OPTIONS, buildCodeNode } from "./code-util.js";
 
@@ -333,7 +332,7 @@ const csvTable = {
                 path.dirname(currentSource()),
                 options.file,
             );
-            body = fs.readFileSync(target, "utf-8");
+            body = readDependency(target);
         }
 
         // `:delim:` applies to the body *and* to the `:header:` option -

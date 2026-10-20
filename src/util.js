@@ -1,5 +1,7 @@
 /* Small shared helpers. */
 
+import { createHash, createHmac } from "node:crypto";
+
 /** Mirrors `docutils.nodes.make_id`: lowercase, non-alphanumerics -> "-". */
 export function makeId(text) {
     const id = String(text ?? "")
@@ -51,13 +53,26 @@ export function escapeHtml(value, { attribute = false } = {}) {
     return s;
 }
 
-/** Generates a readable, reasonably secure password: `abc-def-gh`. */
-export function generatePassword(length = 8) {
-    if (length <= 3) throw new Error("password length must be > 3");
-    const bytes = new Uint8Array(length);
-    crypto.getRandomValues(bytes);
-    const letters = Array.from(bytes, (b) =>
-        String.fromCharCode((b % (122 - 97)) + 97),
+/**
+ * Derives a readable password - `abc-def-gh` - from a solution's MyST source.
+ *
+ * The password only changes when the source does, which keeps the generated
+ * HTML and the password files stable across builds. With a `key` (the master
+ * password) it is an HMAC: changing the master password changes every derived
+ * password, and knowing the source is not enough to compute them. Without a
+ * key it is the plain SHA-256 of the source.
+ *
+ * Identical solutions get identical passwords; that is accepted.
+ */
+export function derivePassword(source, key, length = 8) {
+    if (length <= 3 || length > 32) {
+        throw new Error("password length must be in (3, 32]");
+    }
+    const digest = key
+        ? createHmac("sha256", key).update(source).digest()
+        : createHash("sha256").update(source).digest();
+    const letters = Array.from(digest.subarray(0, length), (b) =>
+        String.fromCharCode(97 + (b % 26)),
     );
     const groups = [];
     for (let i = 0; i < letters.length; i += 3) {

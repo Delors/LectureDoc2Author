@@ -34,13 +34,15 @@ import { exists } from "./fsutil.js";
 /**
  * The files one source document produces.
  *
- * `<deck>.md` -> `<deck>.md.html`, its PDF and the PDF's record, and the two
- * password files that a deck with exercises writes next to it.
+ * `<deck>.md` -> `<deck>.md.html` and its record of what it was built from,
+ * its PDF and the PDF's record, and the two password files that a deck with
+ * exercises writes next to it.
  */
 export function artifactsOf(root, rel) {
     const html = outputNameFor(path.resolve(root, rel));
     return [
         html,
+        `${html}.json`,
         `${html}.pdf`,
         `${html}.pdf.json`,
         `${html}.passwords.json`,

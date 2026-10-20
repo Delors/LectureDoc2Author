@@ -2,10 +2,9 @@
  * supplemental, compound and the docutils compatible `class` directive.
  */
 
-import fs from "node:fs";
 import path from "node:path";
 
-import { currentSource, directiveError } from "../context.js";
+import { currentSource, directiveError, readDependency } from "../context.js";
 import { makeClasses, makeId, titleNode, toText } from "../util.js";
 import { CODE_SELECTION_OPTIONS, selectLines } from "./code-util.js";
 
@@ -368,7 +367,7 @@ function readSource(data, options) {
     const target = path.resolve(path.dirname(source), options.source);
     let text;
     try {
-        text = fs.readFileSync(target, "utf-8");
+        text = readDependency(target);
     } catch (error) {
         throw directiveError(
             data,
